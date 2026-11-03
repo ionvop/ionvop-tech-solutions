@@ -193,9 +193,9 @@ It will allow me to review incoming inquiries, communicate with clients, and man
 
 ### 4.1. Authentication
 
-Access to the admin page will be restricted through a password configured on the server.
+Access to the admin page will require authentication through Google OAuth. Only the Google account matching the email address configured on the server (`ionvop@gmail.com`) will be authorized.
 
-The password will be managed through server-side configuration rather than being exposed in the website's frontend code.
+The authorized email address will be managed through server-side configuration rather than being exposed as a frontend-controlled setting.
 
 ### 4.2. Conversation Management
 
