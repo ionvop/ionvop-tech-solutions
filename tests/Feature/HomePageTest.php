@@ -14,10 +14,23 @@ test('the home page renders the landing sections', function () {
         ->assertSee('ionvop@gmail.com');
 });
 
-test('the chat page renders a placeholder', function () {
+test('the chat page renders the conversation shell', function () {
     $this->get(route('chat'))
         ->assertOk()
-        ->assertSee('Chat is on the way');
+        ->assertSee('Project conversation')
+        ->assertSee('Project details')
+        ->assertSee('Nabunturan, Davao de Oro')
+        ->assertSee('PHP 1,500')
+        ->assertSee('Describe your business problem')
+        ->assertDontSee('Chat is on the way');
+});
+
+test('the chat page drops the site header and footer', function () {
+    $this->get(route('chat'))
+        ->assertOk()
+        ->assertDontSee('All rights reserved')
+        ->assertDontSee('Start a chat')
+        ->assertSee('Back to site');
 });
 
 test('the admin page renders a placeholder', function () {
