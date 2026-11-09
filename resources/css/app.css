@@ -5,9 +5,58 @@
 @source "../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php";
 @source "../../storage/framework/views/*.php";
 
-@plugin "daisyui";
+@plugin "daisyui" {
+    themes: false;
+    include: badge, button, card, divider, footer, hero, link, menu, navbar, status;
+}
+
+@plugin "daisyui/theme" {
+    name: "ionvop";
+    default: true;
+    prefersdark: false;
+    color-scheme: dark;
+
+    --color-base-100: #000000;
+    --color-base-200: #111111;
+    --color-base-300: #1c1c1c;
+    --color-base-content: #f4f4f5;
+    --color-primary: #3e00ff;
+    --color-primary-content: #ffffff;
+    --color-secondary: #a855f7;
+    --color-secondary-content: #170055;
+    --color-accent: #b5ffd9;
+    --color-accent-content: #170055;
+    --color-neutral: #170055;
+    --color-neutral-content: #e6dcff;
+    --color-info: #38bdf8;
+    --color-info-content: #04121c;
+    --color-success: #4ade80;
+    --color-success-content: #04140a;
+    --color-warning: #fbbf24;
+    --color-warning-content: #1c1200;
+    --color-error: #f87171;
+    --color-error-content: #1c0505;
+
+    --radius-selector: 0.5rem;
+    --radius-field: 0.5rem;
+    --radius-box: 1rem;
+
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+
+    --border: 1px;
+
+    --depth: 1;
+    --noise: 0;
+}
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Exo 2', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+@layer base {
+    [x-cloak] {
+        display: none !important;
+    }
 }
