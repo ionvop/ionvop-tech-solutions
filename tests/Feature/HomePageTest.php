@@ -1,5 +1,9 @@
 <?php
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
 test('the home page renders the landing sections', function () {
     $this->get(route('home'))
         ->assertOk()
@@ -19,8 +23,7 @@ test('the chat page renders the conversation shell', function () {
         ->assertOk()
         ->assertSee('Project conversation')
         ->assertSee('Project details')
-        ->assertSee('Nabunturan, Davao de Oro')
-        ->assertSee('PHP 1,500')
+        ->assertSee('Not started yet')
         ->assertSee('Describe your business problem')
         ->assertDontSee('Chat is on the way');
 });
