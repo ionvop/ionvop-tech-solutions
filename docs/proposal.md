@@ -107,9 +107,9 @@ Each project will be accompanied by screenshots and a brief description highligh
 
 For visitors who prefer communicating through other platforms, the landing page will also provide links to the following contact channels:
 
-- Email
-- Facebook
-- Discord
+- Email - `ionvop@gmail.com`
+- GitHub - `https://github.com/ionvop`
+- Discord - `https://discord.com/users/301203021608779776`
 
 ---
 
