@@ -1,0 +1,42 @@
+{
+    "type": "json_schema",
+    "json_schema": {
+        "name": "chat_turn",
+        "strict": true,
+        "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reply", "actions"],
+            "properties": {
+                "reply": {
+                    "type": "string",
+                    "description": "The message shown to the client. Plain text, no markdown headings, at most a few short paragraphs."
+                },
+                "actions": {
+                    "type": "array",
+                    "description": "State changes to apply to the conversation. Use an empty array when nothing should change.",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["type", "value"],
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "set_client_name",
+                                    "set_client_email",
+                                    "set_conversation_label"
+                                ],
+                                "description": "Which conversation field to update."
+                            },
+                            "value": {
+                                "type": "string",
+                                "description": "The new value. For set_client_name use the nickname the client gave. For set_conversation_label use a short descriptive label such as \"Jomar — hardware store\"."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
