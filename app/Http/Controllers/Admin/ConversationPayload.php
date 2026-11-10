@@ -74,6 +74,7 @@ class ConversationPayload
             'role' => $message->role,
             'type' => $message->type,
             'body' => $message->body,
+            'reason' => $message->meta['reason'] ?? null,
             'time' => $message->created_at->format('g:i A'),
             'date' => $message->created_at->format('M j, Y'),
             'created_at' => $message->created_at->toIso8601String(),
