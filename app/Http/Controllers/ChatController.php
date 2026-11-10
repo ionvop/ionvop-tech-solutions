@@ -60,15 +60,17 @@ class ChatController extends Controller
         $created[] = $clientMessage;
         $error = null;
 
-        try {
-            $created[] = $assistant->respond($conversation);
-        } catch (Throwable $exception) {
-            Log::error('The chat assistant failed to respond.', [
-                'conversation' => $conversation->reference,
-                'exception' => $exception,
-            ]);
+        if ($conversation->ai_enabled) {
+            try {
+                $created[] = $assistant->respond($conversation);
+            } catch (Throwable $exception) {
+                Log::error('The chat assistant failed to respond.', [
+                    'conversation' => $conversation->reference,
+                    'exception' => $exception,
+                ]);
 
-            $error = 'The assistant could not reply right now. Your message was saved — please try again in a moment.';
+                $error = 'The assistant could not reply right now. Your message was saved — please try again in a moment.';
+            }
         }
 
         Cookie::queue(
@@ -120,6 +122,7 @@ class ChatController extends Controller
             'contract_status' => $conversation->contract_status,
             'contract_started_at' => $conversation->contract_started_at?->format('M j, Y'),
             'contract_renews_at' => $conversation->contract_renews_at?->format('M j, Y'),
+            'ai_enabled' => $conversation->ai_enabled,
         ];
     }
 
