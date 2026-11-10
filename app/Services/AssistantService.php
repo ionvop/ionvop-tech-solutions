@@ -295,9 +295,7 @@ class AssistantService
      */
     private function systemPrompt(): string
     {
-        return $this->readResource('ai/system-prompt.md')
-            ."\n\n"
-            .$this->readResource('ai/summary-action.md');
+        return $this->readResource('ai/system-prompt.md');
     }
 
     /**
