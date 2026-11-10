@@ -46,6 +46,7 @@
             stages: @js($stages),
             greeting: @js(\App\Models\Conversation::GREETING),
             endpoint: @js(route('chat.messages.store')),
+            pollEndpoint: @js(route('chat.messages.index')),
         })"
     >
         <input id="chat-info-drawer" type="checkbox" class="drawer-toggle">
@@ -136,21 +137,6 @@
                             ></div>
                         </div>
                     </template>
-
-                    <div class="chat chat-start" x-show="sending" x-cloak>
-                        <div class="chat-image avatar avatar-placeholder">
-                            <div class="w-8 rounded-full bg-primary text-xs font-semibold text-primary-content">
-                                <span>i</span>
-                            </div>
-                        </div>
-                        <div class="chat-header">
-                            <span>Assistant</span>
-                        </div>
-                        <div class="chat-bubble flex items-center gap-1">
-                            <span class="loading loading-dots loading-sm"></span>
-                            <span class="text-xs opacity-70">typing</span>
-                        </div>
-                    </div>
 
                     <div class="alert alert-error mt-4 text-sm" x-show="error" x-cloak>
                         <span x-text="error"></span>
