@@ -7,7 +7,7 @@
 
 @plugin "daisyui" {
     themes: false;
-    include: alert, avatar, badge, button, card, chat, divider, drawer, footer, hero, link, loading, menu, navbar, progress, status, steps, textarea, tooltip;
+    include: alert, avatar, badge, button, card, chat, divider, drawer, fieldset, footer, hero, input, label, link, loading, menu, modal, navbar, progress, select, status, steps, tab, textarea, toast, toggle, tooltip;
 }
 
 @plugin "daisyui/theme" {
