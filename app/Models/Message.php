@@ -25,6 +25,11 @@ class Message extends Model
     public const ROLE_ASSISTANT = 'assistant';
 
     /**
+     * The role used for messages written by ionvop from the admin dashboard.
+     */
+    public const ROLE_ADMIN = 'admin';
+
+    /**
      * Get the conversation the message belongs to.
      *
      * @return BelongsTo<Conversation, $this>
@@ -40,6 +45,22 @@ class Message extends Model
     public function isFromClient(): bool
     {
         return $this->role === self::ROLE_CLIENT;
+    }
+
+    /**
+     * Determine whether the message was written by ionvop.
+     */
+    public function isFromAdmin(): bool
+    {
+        return $this->role === self::ROLE_ADMIN;
+    }
+
+    /**
+     * Determine whether the message was written by a human rather than the assistant.
+     */
+    public function isFromHuman(): bool
+    {
+        return $this->isFromClient() || $this->isFromAdmin();
     }
 
     /**
