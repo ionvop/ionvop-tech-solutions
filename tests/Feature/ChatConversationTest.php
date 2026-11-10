@@ -56,8 +56,8 @@ test('sending a message starts a conversation and stores the cookie', function (
         'openrouter.test/*' => Http::response(fakeCompletion([
             'reply' => 'Nice to meet you, Jomar. Which part of the day-to-day takes the most time?',
             'actions' => [
-                ['type' => 'set_client_name', 'value' => 'Jomar'],
-                ['type' => 'set_conversation_label', 'value' => 'Jomar — hardware store'],
+                ['type' => 'set_value', 'key' => 'set_client_name', 'value' => 'Jomar'],
+                ['type' => 'set_value', 'key' => 'set_conversation_label', 'value' => 'Jomar — hardware store'],
             ],
         ])),
     ]);
@@ -95,12 +95,14 @@ test('the assistant request uses the configured model and structured output', fu
 
     Http::assertSent(function (Request $request): bool {
         $format = $request['response_format'] ?? [];
+        $schema = $format['json_schema']['schema'] ?? [];
 
         return $request->url() === 'https://openrouter.test/api/v1/chat/completions'
             && $request->hasHeader('Authorization', 'Bearer test-key')
             && $request['model'] === 'test/model'
             && ($format['type'] ?? null) === 'json_schema'
             && ($format['json_schema']['strict'] ?? null) === true
+            && ($schema['properties']['reply']['type'] ?? null) === ['string', 'null']
             && ($request['provider']['require_parameters'] ?? null) === true;
     });
 });
@@ -159,7 +161,8 @@ test('the assistant ignores actions it is not allowed to apply', function () {
             'reply' => 'Understood.',
             'actions' => [
                 ['type' => 'set_stage', 'value' => 'development'],
-                ['type' => 'set_client_name', 'value' => 'Jomar'],
+                ['type' => 'set_value', 'key' => 'set_stage', 'value' => 'development'],
+                ['type' => 'set_value', 'key' => 'set_client_name', 'value' => 'Jomar'],
             ],
         ])),
     ]);
@@ -170,4 +173,107 @@ test('the assistant ignores actions it is not allowed to apply', function () {
 
     expect($conversation->client_name)->toBe('Jomar')
         ->and($conversation->stage)->toBe(Conversation::INITIAL_STAGE);
+});
+
+test('the assistant can stay silent without storing a message', function () {
+    Http::fake([
+        'openrouter.test/*' => Http::response(fakeCompletion([
+            'reply' => null,
+            'actions' => [],
+        ])),
+    ]);
+
+    $response = $this->postJson(route('chat.messages.store'), ['message' => 'asdkjhasd']);
+
+    $response->assertOk()
+        ->assertJsonPath('error', null)
+        ->assertJsonCount(2, 'messages')
+        ->assertJsonPath('messages.1.role', 'client');
+
+    $conversation = Conversation::query()->sole();
+
+    expect($conversation->messages()->where('role', Message::ROLE_ASSISTANT)->count())->toBe(1)
+        ->and($conversation->ai_enabled)->toBeTrue();
+});
+
+test('the assistant can pause itself and the client sees a pause notice', function () {
+    Http::fake([
+        'openrouter.test/*' => Http::response(fakeCompletion([
+            'reply' => null,
+            'actions' => [
+                ['type' => 'self_disable', 'reason' => 'Client is spamming'],
+            ],
+        ])),
+    ]);
+
+    $response = $this->postJson(route('chat.messages.store'), ['message' => 'buy now buy now buy now']);
+
+    $response->assertOk()
+        ->assertJsonPath('conversation.ai_enabled', false)
+        ->assertJsonCount(3, 'messages')
+        ->assertJsonPath('messages.2.role', 'assistant')
+        ->assertJsonPath('messages.2.body', Conversation::PAUSE_NOTICE);
+
+    $conversation = Conversation::query()->sole();
+    $pause = $conversation->messages()->where('role', Message::ROLE_ASSISTANT)->latest('id')->firstOrFail();
+
+    expect($conversation->ai_enabled)->toBeFalse()
+        ->and($pause->body)->toBe(Conversation::PAUSE_NOTICE)
+        ->and($pause->meta['reason'])->toBe('Client is spamming');
+});
+
+test('a reply is kept when the assistant pauses itself', function () {
+    Http::fake([
+        'openrouter.test/*' => Http::response(fakeCompletion([
+            'reply' => 'I will step back and let ionvop take over.',
+            'actions' => [
+                ['type' => 'self_disable', 'reason' => 'Repeated off-topic messages'],
+            ],
+        ])),
+    ]);
+
+    $this->postJson(route('chat.messages.store'), ['message' => 'what is the weather'])
+        ->assertOk()
+        ->assertJsonPath('conversation.ai_enabled', false)
+        ->assertJsonPath('messages.2.body', 'I will step back and let ionvop take over.');
+
+    $conversation = Conversation::query()->sole();
+
+    expect($conversation->ai_enabled)->toBeFalse();
+});
+
+test('the assistant can summarize the conversation without pausing itself', function () {
+    Http::fake([
+        'openrouter.test/*' => Http::response(fakeCompletion([
+            'reply' => 'Thanks, that is everything I need.',
+            'actions' => [
+                ['type' => 'generate_summary', 'summary' => "Client: Jomar\nBusiness: Hardware store"],
+            ],
+        ])),
+    ]);
+
+    $this->postJson(route('chat.messages.store'), ['message' => 'That is all, thanks.'])
+        ->assertOk()
+        ->assertJsonPath('conversation.ai_enabled', true);
+
+    $conversation = Conversation::query()->sole();
+
+    expect($conversation->summary)->toBe("Client: Jomar\nBusiness: Hardware store")
+        ->and($conversation->summary_generated_at)->not->toBeNull()
+        ->and($conversation->ai_enabled)->toBeTrue();
+});
+
+test('a paused conversation does not call the assistant again', function () {
+    Http::fake();
+
+    $conversation = Conversation::factory()->create(['ai_enabled' => false]);
+
+    $this->withCredentials()
+        ->withCookie(Conversation::COOKIE, $conversation->reference)
+        ->postJson(route('chat.messages.store'), ['message' => 'Hello again'])
+        ->assertOk()
+        ->assertJsonCount(1, 'messages')
+        ->assertJsonPath('messages.0.role', 'client');
+
+    Http::assertNothingSent();
 });
