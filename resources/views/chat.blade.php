@@ -33,6 +33,7 @@
         'contract_status' => $conversation?->contract_status,
         'contract_started_at' => $conversation?->contract_started_at?->format('M j, Y'),
         'contract_renews_at' => $conversation?->contract_renews_at?->format('M j, Y'),
+        'ai_enabled' => $conversation?->ai_enabled ?? true,
     ];
 @endphp
 
@@ -72,7 +73,7 @@
                         <p class="truncate text-sm font-semibold" x-text="conversation.label">Project conversation</p>
                         <p class="flex items-center gap-1.5 text-xs text-base-content/60">
                             <span class="status status-success status-xs"></span>
-                            Replies within a day
+                            <span x-text="conversation.ai_enabled ? 'Replies within a day' : 'ionvop is handling this conversation'"></span>
                         </p>
                     </div>
 
@@ -109,7 +110,9 @@
                                     class="w-8 rounded-full text-xs font-semibold"
                                     :class="message.role === 'client'
                                         ? 'bg-base-300 text-base-content/70'
-                                        : 'bg-primary text-primary-content'"
+                                        : (message.role === 'admin'
+                                            ? 'bg-secondary text-secondary-content'
+                                            : 'bg-primary text-primary-content')"
                                 >
                                     <span x-text="message.role === 'client'
                                         ? (conversation.client_name?.charAt(0).toUpperCase() ?? 'C')
@@ -120,13 +123,15 @@
                             <div class="chat-header">
                                 <span x-text="message.role === 'client'
                                     ? (conversation.client_name ?? 'You')
-                                    : 'Assistant'"></span>
+                                    : (message.role === 'admin' ? 'ionvop' : 'Assistant')"></span>
                                 <time class="opacity-50" x-text="message.time"></time>
                             </div>
 
                             <div
                                 class="chat-bubble whitespace-pre-line leading-relaxed"
-                                :class="message.role === 'client' ? 'chat-bubble-primary' : ''"
+                                :class="message.role === 'client'
+                                    ? 'chat-bubble-primary'
+                                    : (message.role === 'admin' ? 'chat-bubble-secondary' : '')"
                                 x-text="message.body"
                             ></div>
                         </div>
