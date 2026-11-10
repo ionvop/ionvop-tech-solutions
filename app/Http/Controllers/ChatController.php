@@ -62,7 +62,11 @@ class ChatController extends Controller
 
         if ($conversation->ai_enabled) {
             try {
-                $created[] = $assistant->respond($conversation);
+                $reply = $assistant->respond($conversation);
+
+                if ($reply !== null) {
+                    $created[] = $reply;
+                }
             } catch (Throwable $exception) {
                 Log::error('The chat assistant failed to respond.', [
                     'conversation' => $conversation->reference,
@@ -84,6 +88,31 @@ class ChatController extends Controller
             'messages' => array_map($this->messagePayload(...), $created),
             'error' => $error,
         ], $error === null ? 200 : 502);
+    }
+
+    /**
+     * Return the visitor's conversation and transcript for polling.
+     */
+    public function messages(Request $request): JsonResponse
+    {
+        $conversation = $this->resolveConversation($request);
+
+        if ($conversation === null) {
+            return response()->json([
+                'conversation' => null,
+                'messages' => [],
+            ]);
+        }
+
+        return response()->json([
+            'conversation' => $this->conversationPayload($conversation),
+            'messages' => $conversation->messages()
+                ->orderBy('id')
+                ->get()
+                ->map($this->messagePayload(...))
+                ->values()
+                ->all(),
+        ]);
     }
 
     /**
