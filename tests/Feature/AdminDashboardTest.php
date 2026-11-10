@@ -110,6 +110,22 @@ test('a conversation can be opened with its transcript', function () {
         ->assertJsonPath('messages.0.body', 'We still write sales in a notebook.');
 });
 
+test('a self-paused message carries its reason in the transcript', function () {
+    $conversation = Conversation::factory()->create(['ai_enabled' => false]);
+
+    $conversation->messages()->create([
+        'role' => Message::ROLE_ASSISTANT,
+        'type' => 'text',
+        'body' => Conversation::PAUSE_NOTICE,
+        'meta' => ['reason' => 'Client is spamming'],
+    ]);
+
+    $this->actingAs($this->admin)
+        ->getJson(route('admin.conversations.show', $conversation))
+        ->assertOk()
+        ->assertJsonPath('messages.0.reason', 'Client is spamming');
+});
+
 test('the project details can be updated', function () {
     $conversation = Conversation::factory()->create();
 
