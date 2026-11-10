@@ -1,0 +1,18 @@
+{
+    "type": "json_schema",
+    "json_schema": {
+        "name": "conversation_summary",
+        "strict": true,
+        "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["summary"],
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "A structured plain-text summary of the inquiry, using short labelled sections and no markdown headings."
+                }
+            }
+        }
+    }
+}
