@@ -1,3 +1,5 @@
+const POLL_MS = 10_000;
+
 export default function chat(initial) {
     return {
         messages: initial.messages ?? [],
@@ -5,13 +7,27 @@ export default function chat(initial) {
         stages: initial.stages ?? [],
         greeting: initial.greeting ?? '',
         endpoint: initial.endpoint ?? '',
+        pollEndpoint: initial.pollEndpoint ?? '',
 
         draft: '',
         sending: false,
         error: null,
+        polling: true,
+        timers: [],
 
         init() {
             this.scrollToBottom();
+
+            this.timers.push(setInterval(() => this.poll(), POLL_MS));
+
+            document.addEventListener('visibilitychange', () => {
+                this.polling = ! document.hidden;
+            });
+        },
+
+        destroy() {
+            this.timers.forEach((timer) => clearInterval(timer));
+            this.timers = [];
         },
 
         get canSend() {
@@ -81,6 +97,46 @@ export default function chat(initial) {
                 this.sending = false;
                 this.scrollToBottom();
                 this.$nextTick(() => this.resize());
+            }
+        },
+
+        /**
+         * Refresh the transcript so replies from ionvop and assistant state changes appear
+         * without a reload.
+         */
+        async poll() {
+            if (! this.polling || this.sending || this.pollEndpoint === '') {
+                return;
+            }
+
+            try {
+                const response = await fetch(this.pollEndpoint, {
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    },
+                });
+
+                if (! response.ok) {
+                    return;
+                }
+
+                const payload = await response.json().catch(() => ({}));
+                const incoming = payload.messages ?? [];
+                const grew = incoming.length > this.messages.length;
+
+                this.messages = incoming;
+
+                if (payload.conversation) {
+                    this.conversation = payload.conversation;
+                }
+
+                if (grew) {
+                    this.scrollToBottom();
+                }
+            } catch {
+                // Ignore transient polling failures.
             }
         },
 
