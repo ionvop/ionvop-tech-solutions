@@ -36,8 +36,7 @@ test('the chat page drops the site header and footer', function () {
         ->assertSee('Back to site');
 });
 
-test('the admin page renders a placeholder', function () {
+test('the admin page requires sign-in', function () {
     $this->get(route('admin'))
-        ->assertOk()
-        ->assertSee('Admin dashboard is on the way');
+        ->assertRedirect(route('admin.login'));
 });
