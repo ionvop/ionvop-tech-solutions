@@ -9,31 +9,72 @@
             "required": ["reply", "actions"],
             "properties": {
                 "reply": {
-                    "type": "string",
-                    "description": "The message shown to the client. Plain text, no markdown headings, at most a few short paragraphs."
+                    "type": ["string", "null"],
+                    "description": "The message shown to the client. Plain text, no markdown headings, at most a few short paragraphs. Use null when the client's message does not deserve a reply, such as incoherent, abusive, or entirely off-topic input."
                 },
                 "actions": {
                     "type": "array",
-                    "description": "State changes to apply to the conversation. Use an empty array when nothing should change.",
+                    "description": "State changes to apply to the conversation. Use an empty array when nothing should change. These actions will be executed sequentially.",
                     "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["type", "value"],
-                        "properties": {
-                            "type": {
-                                "type": "string",
-                                "enum": [
-                                    "set_client_name",
-                                    "set_client_email",
-                                    "set_conversation_label"
-                                ],
-                                "description": "Which conversation field to update."
+                        "anyOf": [
+                            {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "key", "value"],
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": ["set_value"],
+                                        "description": "Action type that requires the key and value properties."
+                                    },
+                                    "key": {
+                                        "type": "string",
+                                        "enum": [
+                                            "set_client_name",
+                                            "set_client_email",
+                                            "set_conversation_label"
+                                        ],
+                                        "description": "Which conversation field to update."
+                                    },
+                                    "value": {
+                                        "type": "string",
+                                        "description": "The new value. For set_client_name use the nickname the client gave. For set_conversation_label use a short descriptive label such as \"Jomar — hardware store\"."
+                                    }
+                                }
                             },
-                            "value": {
-                                "type": "string",
-                                "description": "The new value. For set_client_name use the nickname the client gave. For set_conversation_label use a short descriptive label such as \"Jomar — hardware store\"."
+                            {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "reason"],
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": ["self_disable"],
+                                        "description": "Action type that requires the reason property. Pauses the assistant for this conversation until ionvop re-enables it."
+                                    },
+                                    "reason": {
+                                        "type": "string",
+                                        "description": "A short note for ionvop explaining why the assistant paused itself, such as \"Repeated off-topic messages\" or \"Client is spamming\". At most one sentence."
+                                    }
+                                }
+                            },
+                            {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "summary"],
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": ["generate_summary"],
+                                        "description": "Action type that requires the summary property. Stores a brief for ionvop without pausing the assistant."
+                                    },
+                                    "summary": {
+                                        "type": "string",
+                                        "description": "A structured plain-text summary of the inquiry, using short labelled sections and no markdown headings."
+                                    }
+                                }
                             }
-                        }
+                        ]
                     }
                 }
             }
