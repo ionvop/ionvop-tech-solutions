@@ -17,20 +17,32 @@ class AssistantService
     private const HISTORY_LIMIT = 40;
 
     /**
-     * The actions the assistant is allowed to apply to a conversation.
-     *
-     * @var list<string>
+     * The maximum length of a stored summary.
      */
-    private const ACTIONS = ['set_client_name', 'set_client_email', 'set_conversation_label'];
+    private const SUMMARY_LIMIT = 4000;
+
+    /**
+     * The `set_value` keys the assistant is allowed to apply, mapped to their columns.
+     *
+     * @var array<string, string>
+     */
+    private const SET_VALUE_KEYS = [
+        'set_client_name' => 'client_name',
+        'set_client_email' => 'client_email',
+        'set_conversation_label' => 'label',
+    ];
 
     public function __construct(private readonly OpenRouterClient $client) {}
 
     /**
      * Ask the assistant for the next turn and persist the result.
      *
+     * Returns null when the assistant chose to stay silent, in which case nothing is
+     * stored and the conversation's last message time is left untouched.
+     *
      * @throws RuntimeException
      */
-    public function respond(Conversation $conversation): Message
+    public function respond(Conversation $conversation): ?Message
     {
         $payload = $this->client->complete(
             $this->buildMessages($conversation),
@@ -40,27 +52,49 @@ class AssistantService
         $reply = $payload['reply'] ?? null;
         $actions = $payload['actions'] ?? [];
 
-        if (! is_string($reply) || trim($reply) === '') {
-            throw new RuntimeException('The assistant returned no reply.');
+        if ($reply !== null && ! is_string($reply)) {
+            throw new RuntimeException('The assistant returned a malformed reply.');
         }
 
         if (! is_array($actions)) {
             throw new RuntimeException('The assistant returned malformed actions.');
         }
 
-        return DB::transaction(function () use ($conversation, $reply, $actions): Message {
-            $this->applyActions($conversation, $actions);
+        return DB::transaction(function () use ($conversation, $reply, $actions): ?Message {
+            $result = $this->applyActions($conversation, $actions);
+
+            $body = $this->resolveBody($reply, $result['disabled']);
+
+            if ($body === null) {
+                return null;
+            }
 
             $message = $conversation->messages()->create([
                 'role' => Message::ROLE_ASSISTANT,
                 'type' => 'text',
-                'body' => trim($reply),
+                'body' => $body,
+                'meta' => $result['reason'] === null ? null : ['reason' => $result['reason']],
             ]);
 
             $conversation->forceFill(['last_message_at' => $message->created_at])->save();
 
             return $message;
         });
+    }
+
+    /**
+     * Decide what the client sees for this turn.
+     *
+     * A silent turn still produces a message when the assistant paused itself, so the
+     * client always gets closure instead of an unexplained stop.
+     */
+    private function resolveBody(?string $reply, bool $disabled): ?string
+    {
+        if ($reply !== null && trim($reply) !== '') {
+            return trim($reply);
+        }
+
+        return $disabled ? Conversation::PAUSE_NOTICE : null;
     }
 
     /**
@@ -181,17 +215,21 @@ class AssistantService
             '- Client contact: '.($conversation->client_email ?? 'unknown'),
             '- Conversation label: '.($conversation->label ?? 'not set'),
             '- Project stage: '.$conversation->stage,
+            '- Summary on file: '.($conversation->summary === null ? 'no' : 'yes'),
         ]);
     }
 
     /**
-     * Apply the actions returned by the assistant.
+     * Apply the actions returned by the assistant, in the order they were given.
      *
      * @param  array<int, mixed>  $actions
+     * @return array{disabled: bool, reason: string|null}
      */
-    private function applyActions(Conversation $conversation, array $actions): void
+    private function applyActions(Conversation $conversation, array $actions): array
     {
         $changes = [];
+        $disabled = false;
+        $reason = null;
 
         foreach ($actions as $action) {
             if (! is_array($action)) {
@@ -199,36 +237,67 @@ class AssistantService
             }
 
             $type = $action['type'] ?? null;
-            $value = $action['value'] ?? null;
 
-            if (! is_string($type) || ! in_array($type, self::ACTIONS, true)) {
+            if (! is_string($type)) {
                 continue;
             }
 
-            if (! is_string($value) || trim($value) === '') {
-                continue;
+            switch ($type) {
+                case 'set_value':
+                    $key = $action['key'] ?? null;
+                    $value = $action['value'] ?? null;
+
+                    if (! is_string($key) || ! isset(self::SET_VALUE_KEYS[$key])) {
+                        break;
+                    }
+
+                    if (! is_string($value) || trim($value) === '') {
+                        break;
+                    }
+
+                    $changes[self::SET_VALUE_KEYS[$key]] = Str::limit(trim($value), 255, '');
+                    break;
+
+                case 'self_disable':
+                    $disabled = true;
+                    $changes['ai_enabled'] = false;
+
+                    $note = $action['reason'] ?? null;
+
+                    if (is_string($note) && trim($note) !== '') {
+                        $reason = Str::limit(trim($note), 255, '');
+                    }
+
+                    break;
+
+                case 'generate_summary':
+                    $summary = $action['summary'] ?? null;
+
+                    if (! is_string($summary) || trim($summary) === '') {
+                        break;
+                    }
+
+                    $changes['summary'] = Str::limit(trim($summary), self::SUMMARY_LIMIT, '');
+                    $changes['summary_generated_at'] = now();
+                    break;
             }
-
-            $value = Str::limit(trim($value), 255, '');
-
-            $changes[match ($type) {
-                'set_client_name' => 'client_name',
-                'set_client_email' => 'client_email',
-                'set_conversation_label' => 'label',
-            }] = $value;
         }
 
         if ($changes !== []) {
             $conversation->forceFill($changes)->save();
         }
+
+        return ['disabled' => $disabled, 'reason' => $reason];
     }
 
     /**
-     * Read the system prompt from disk.
+     * Read the system prompt from disk, including the summary instructions.
      */
     private function systemPrompt(): string
     {
-        return $this->readResource('ai/system-prompt.md');
+        return $this->readResource('ai/system-prompt.md')
+            ."\n\n"
+            .$this->readResource('ai/summary-action.md');
     }
 
     /**
