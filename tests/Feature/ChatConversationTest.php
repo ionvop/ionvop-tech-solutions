@@ -107,6 +107,48 @@ test('the assistant request uses the configured model and structured output', fu
     });
 });
 
+test('the assistant receives debug instructions when debug mode is enabled', function () {
+    config(['app.debug' => true]);
+
+    Http::fake([
+        'openrouter.test/*' => Http::response(fakeCompletion([
+            'reply' => 'What should I call you?',
+            'actions' => [],
+        ])),
+    ]);
+
+    $this->postJson(route('chat.messages.store'), ['message' => 'Hello'])->assertOk();
+
+    Http::assertSent(function (Request $request): bool {
+        $systemPrompt = $request['messages'][0]['content'] ?? '';
+
+        return str_contains($systemPrompt, 'You are the first-contact assistant for ionvop')
+            && str_contains($systemPrompt, '## Debug mode')
+            && ! str_contains($systemPrompt, '## Production mode');
+    });
+});
+
+test('the assistant receives production instructions when debug mode is disabled', function () {
+    config(['app.debug' => false]);
+
+    Http::fake([
+        'openrouter.test/*' => Http::response(fakeCompletion([
+            'reply' => 'What should I call you?',
+            'actions' => [],
+        ])),
+    ]);
+
+    $this->postJson(route('chat.messages.store'), ['message' => 'Hello'])->assertOk();
+
+    Http::assertSent(function (Request $request): bool {
+        $systemPrompt = $request['messages'][0]['content'] ?? '';
+
+        return str_contains($systemPrompt, 'You are the first-contact assistant for ionvop')
+            && str_contains($systemPrompt, '## Production mode')
+            && ! str_contains($systemPrompt, '## Debug mode');
+    });
+});
+
 test('a returning visitor sees their stored conversation', function () {
     $conversation = Conversation::factory()->withClient('Jomar', 'jomar@example.com')->create();
 
