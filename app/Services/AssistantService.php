@@ -295,7 +295,13 @@ class AssistantService
      */
     private function systemPrompt(): string
     {
-        return $this->readResource('ai/system-prompt.md');
+        $modePrompt = config('app.debug')
+            ? 'ai/debug-prompt.md'
+            : 'ai/production-prompt.md';
+
+        return $this->readResource('ai/system-prompt.md')
+            ."\n\n"
+            .$this->readResource($modePrompt);
     }
 
     /**
