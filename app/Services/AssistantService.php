@@ -64,6 +64,62 @@ class AssistantService
     }
 
     /**
+     * Ask the assistant for an administrative summary of the conversation.
+     *
+     * @throws RuntimeException
+     */
+    public function summarize(Conversation $conversation): string
+    {
+        $payload = $this->client->complete(
+            $this->buildSummaryMessages($conversation),
+            $this->summaryFormat(),
+        );
+
+        $summary = $payload['summary'] ?? null;
+
+        if (! is_string($summary) || trim($summary) === '') {
+            throw new RuntimeException('The assistant returned no summary.');
+        }
+
+        return trim($summary);
+    }
+
+    /**
+     * Build the message list used to summarize a conversation.
+     *
+     * @return list<array{role: string, content: string}>
+     */
+    private function buildSummaryMessages(Conversation $conversation): array
+    {
+        $messages = [
+            ['role' => 'system', 'content' => $this->readResource('ai/summary-prompt.md')],
+            ['role' => 'system', 'content' => $this->stateSummary($conversation)],
+        ];
+
+        $history = $conversation->messages()->orderBy('id')->get();
+
+        foreach ($history as $message) {
+            if ($message->type !== 'text' || blank($message->body)) {
+                continue;
+            }
+
+            $messages[] = $this->historyEntry($message);
+        }
+
+        return $messages;
+    }
+
+    /**
+     * Read the summary output definition from disk.
+     *
+     * @return array<string, mixed>
+     */
+    private function summaryFormat(): array
+    {
+        return $this->readJsonResource('ai/summary-format.json');
+    }
+
+    /**
      * Build the message list sent to the model.
      *
      * @return list<array{role: string, content: string}>
@@ -86,13 +142,32 @@ class AssistantService
                 continue;
             }
 
-            $messages[] = [
-                'role' => $message->isFromClient() ? 'user' : 'assistant',
-                'content' => $message->body,
-            ];
+            $messages[] = $this->historyEntry($message);
         }
 
         return $messages;
+    }
+
+    /**
+     * Convert a stored message into a model-facing history entry.
+     *
+     * Both the client and ionvop are human participants, so they are sent as
+     * `user` turns and labelled with a prefix. Only the assistant speaks as
+     * the assistant.
+     *
+     * @return array{role: string, content: string}
+     */
+    private function historyEntry(Message $message): array
+    {
+        if ($message->isFromClient()) {
+            return ['role' => 'user', 'content' => '[CLIENT]: '.$message->body];
+        }
+
+        if ($message->isFromAdmin()) {
+            return ['role' => 'user', 'content' => '[IONVOP]: '.$message->body];
+        }
+
+        return ['role' => 'assistant', 'content' => $message->body];
     }
 
     /**
@@ -153,13 +228,7 @@ class AssistantService
      */
     private function systemPrompt(): string
     {
-        $path = resource_path('ai/system-prompt.md');
-
-        if (! File::exists($path)) {
-            throw new RuntimeException('Missing assistant system prompt at '.$path);
-        }
-
-        return File::get($path);
+        return $this->readResource('ai/system-prompt.md');
     }
 
     /**
@@ -169,16 +238,34 @@ class AssistantService
      */
     private function responseFormat(): array
     {
-        $path = resource_path('ai/response-format.json');
+        return $this->readJsonResource('ai/response-format.json');
+    }
+
+    /**
+     * Read a text resource from the `resources` directory.
+     */
+    private function readResource(string $relativePath): string
+    {
+        $path = resource_path($relativePath);
 
         if (! File::exists($path)) {
-            throw new RuntimeException('Missing response format definition at '.$path);
+            throw new RuntimeException('Missing assistant resource at '.$path);
         }
 
-        $decoded = json_decode(File::get($path), true);
+        return File::get($path);
+    }
+
+    /**
+     * Read and decode a JSON resource from the `resources` directory.
+     *
+     * @return array<string, mixed>
+     */
+    private function readJsonResource(string $relativePath): array
+    {
+        $decoded = json_decode($this->readResource($relativePath), true);
 
         if (! is_array($decoded)) {
-            throw new RuntimeException('The response format definition is not valid JSON.');
+            throw new RuntimeException('The resource at '.$relativePath.' is not valid JSON.');
         }
 
         return $decoded;
