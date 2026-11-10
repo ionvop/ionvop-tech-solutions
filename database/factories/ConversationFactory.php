@@ -21,6 +21,7 @@ class ConversationFactory extends Factory
             'reference' => Conversation::generateReference(),
             'stage' => Conversation::INITIAL_STAGE,
             'currency' => 'PHP',
+            'ai_enabled' => true,
         ];
     }
 
