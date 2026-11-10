@@ -4,9 +4,11 @@ namespace App\Models;
 
 use Database\Factories\ConversationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 #[Fillable([
@@ -24,6 +26,10 @@ use Illuminate\Support\Str;
     'contract_started_at',
     'contract_renews_at',
     'last_message_at',
+    'summary',
+    'summary_generated_at',
+    'ai_enabled',
+    'admin_read_at',
 ])]
 class Conversation extends Model
 {
@@ -41,6 +47,13 @@ class Conversation extends Model
      * The stage a conversation starts at.
      */
     public const INITIAL_STAGE = 'inquiry';
+
+    /**
+     * The contract statuses ionvop can assign to a conversation.
+     *
+     * @var list<string>
+     */
+    public const CONTRACT_STATUSES = ['Draft', 'Active', 'Paused', 'Completed', 'Cancelled'];
 
     /**
      * The cookie that stores the reference of the visitor's conversation.
@@ -63,6 +76,26 @@ class Conversation extends Model
     }
 
     /**
+     * Get the most recent message in the conversation.
+     *
+     * @return HasOne<Message, $this>
+     */
+    public function lastMessage(): HasOne
+    {
+        return $this->hasOne(Message::class)->latestOfMany();
+    }
+
+    /**
+     * Eager load the last message and the message count for a listing.
+     *
+     * @param  Builder<Conversation>  $query
+     */
+    public function scopeWithLastMessage(Builder $query): void
+    {
+        $query->with('lastMessage')->withCount('messages');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -77,6 +110,9 @@ class Conversation extends Model
             'contract_started_at' => 'date',
             'contract_renews_at' => 'date',
             'last_message_at' => 'datetime',
+            'summary_generated_at' => 'datetime',
+            'ai_enabled' => 'boolean',
+            'admin_read_at' => 'datetime',
         ];
     }
 
@@ -100,6 +136,7 @@ class Conversation extends Model
         $conversation = static::create([
             'reference' => static::generateReference(),
             'stage' => self::INITIAL_STAGE,
+            'ai_enabled' => true,
         ]);
 
         $greeting = $conversation->messages()->create([
@@ -137,5 +174,31 @@ class Conversation extends Model
     public function displayLabel(): string
     {
         return $this->label ?? 'Project conversation';
+    }
+
+    /**
+     * Get the selectable stages keyed by their stored value.
+     *
+     * @return array<string, string>
+     */
+    public static function stageOptions(): array
+    {
+        return array_combine(
+            array_map(Str::lower(...), self::STAGES),
+            self::STAGES,
+        );
+    }
+
+    /**
+     * Determine whether the conversation has messages ionvop has not read yet.
+     */
+    public function hasUnread(): bool
+    {
+        if ($this->admin_read_at === null) {
+            return $this->last_message_at !== null;
+        }
+
+        return $this->last_message_at !== null
+            && $this->last_message_at->greaterThan($this->admin_read_at);
     }
 }
