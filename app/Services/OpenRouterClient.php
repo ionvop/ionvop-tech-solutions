@@ -47,6 +47,9 @@ class OpenRouterClient
                 'model' => $this->model,
                 'messages' => $messages,
                 'response_format' => $responseFormat,
+                'reasoning' => [
+                    'effort' => 'none',
+                ],
                 'provider' => [
                     'require_parameters' => true,
                 ],
