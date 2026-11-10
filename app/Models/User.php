@@ -10,12 +10,24 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'google_id', 'avatar'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    /**
+     * Determine whether the user is the configured administrator.
+     */
+    public function isAdmin(): bool
+    {
+        $adminEmail = config('admin.email');
+
+        return is_string($adminEmail)
+            && $adminEmail !== ''
+            && strcasecmp($this->email, $adminEmail) === 0;
+    }
 
     /**
      * Get the attributes that should be cast.
