@@ -10,6 +10,10 @@ Route::view('/', 'home')->name('home');
 
 Route::get('/chat', [ChatController::class, 'index'])->name('chat');
 
+Route::get('/chat/messages', [ChatController::class, 'messages'])
+    ->middleware('throttle:chat-poll')
+    ->name('chat.messages.index');
+
 Route::post('/chat/messages', [ChatController::class, 'store'])
     ->middleware('throttle:chat')
     ->name('chat.messages.store');
