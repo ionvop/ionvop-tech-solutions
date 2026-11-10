@@ -225,6 +225,10 @@
                                         }"
                                         x-text="message.body"
                                     ></div>
+
+                                    <div class="chat-footer" x-show="message.reason" x-cloak>
+                                        <span class="text-[0.65rem] text-base-content/40" x-text="`Paused: ${message.reason}`"></span>
+                                    </div>
                                 </div>
                             </template>
 
