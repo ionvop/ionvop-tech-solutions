@@ -5,48 +5,18 @@
 
 @section('fullscreen', 'true')
 
-@php
-    $stages = \App\Models\Conversation::STAGES;
-
-    $initialMessages = $messages
-        ->map(fn (\App\Models\Message $message): array => [
-            'id' => $message->id,
-            'role' => $message->role,
-            'type' => $message->type,
-            'body' => $message->body,
-            'time' => $message->created_at->format('g:i A'),
-        ])
-        ->values();
-
-    $initialConversation = [
-        'reference' => $conversation?->reference,
-        'label' => $conversation?->displayLabel() ?? 'Project conversation',
-        'client_name' => $conversation?->client_name,
-        'client_email' => $conversation?->client_email,
-        'stage' => $conversation?->stage ?? \App\Models\Conversation::INITIAL_STAGE,
-        'stage_index' => $conversation?->stageIndex() ?? 0,
-        'currency' => $conversation?->currency ?? 'PHP',
-        'first_month_amount' => $conversation?->first_month_amount,
-        'monthly_amount' => $conversation?->monthly_amount,
-        'amount_paid' => $conversation?->amount_paid,
-        'amount_due' => $conversation?->amount_due,
-        'contract_status' => $conversation?->contract_status,
-        'contract_started_at' => $conversation?->contract_started_at?->format('M j, Y'),
-        'contract_renews_at' => $conversation?->contract_renews_at?->format('M j, Y'),
-        'ai_enabled' => $conversation?->ai_enabled ?? true,
-    ];
-@endphp
-
 @section('content')
     <div
         class="drawer min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden lg:drawer-open"
         x-data="chat({
-            messages: @js($initialMessages),
-            conversation: @js($initialConversation),
-            stages: @js($stages),
+            messages: @js($messages),
+            conversation: @js($conversation),
+            emptyConversation: @js($emptyConversation),
+            stages: @js(\App\Models\Conversation::STAGES),
             greeting: @js(\App\Models\Conversation::GREETING),
             endpoint: @js(route('chat.messages.store')),
             pollEndpoint: @js(route('chat.messages.index')),
+            forgetEndpoint: @js(route('chat.conversation.forget')),
         })"
     >
         <input id="chat-info-drawer" type="checkbox" class="drawer-toggle">
@@ -130,9 +100,11 @@
 
                             <div
                                 class="chat-bubble whitespace-pre-line leading-relaxed"
-                                :class="message.role === 'client'
-                                    ? 'chat-bubble-primary'
-                                    : (message.role === 'admin' ? 'chat-bubble-secondary' : '')"
+                                :class="{
+                                    'chat-bubble-primary': message.role === 'client',
+                                    'chat-bubble-secondary': message.role === 'admin',
+                                    'opacity-60': message.pending === true,
+                                }"
                                 x-text="message.body"
                             ></div>
                         </div>
@@ -332,11 +304,64 @@
                     </p>
                 </div>
 
+                <div class="rounded-box bg-base-100 p-4" x-show="conversation.reference" x-cloak>
+                    <p class="text-xs uppercase tracking-wide text-base-content/50">Danger zone</p>
+
+                    <button
+                        type="button"
+                        class="btn btn-error btn-outline btn-sm mt-3 w-full"
+                        @click="confirmReset()"
+                    >
+                        Start a new conversation
+                    </button>
+
+                    <p class="mt-2 text-[0.65rem] leading-relaxed text-base-content/40">
+                        This removes the conversation from this browser. You will not be able to read it again,
+                        even though ionvop keeps a copy for follow-up.
+                    </p>
+                </div>
+
                 <p class="mt-auto text-xs leading-relaxed text-base-content/40">
                     This conversation is saved in your browser. Clearing browser data removes access to it,
                     so keep the email above reachable.
                 </p>
             </aside>
         </div>
+
+        <dialog id="chat-reset-dialog" class="modal">
+            <div class="modal-box">
+                <h3 class="text-lg font-bold text-error">Start a new conversation?</h3>
+
+                <p class="py-4 text-sm leading-relaxed text-base-content/70">
+                    You are about to lose access to this conversation and every message in it.
+                    It will be removed from this browser and you will not be able to read it again.
+                </p>
+
+                <div class="alert alert-error text-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5 shrink-0" aria-hidden="true">
+                        <path d="M480-280q17 0 28.5-11.5T520-320q0-17-11.5-28.5T480-360q-17 0-28.5 11.5T440-320q0 17 11.5 28.5T480-280Zm-40-160h80v-240h-80v240Zm40 360q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z" />
+                    </svg>
+                    <span>
+                        This cannot be undone from your side. ionvop still has a copy, so reach out by email
+                        if you need anything from this conversation later.
+                    </span>
+                </div>
+
+                <div class="modal-action">
+                    <form method="dialog">
+                        <button class="btn btn-ghost btn-sm">Cancel</button>
+                    </form>
+
+                    <button type="button" class="btn btn-error btn-sm" :disabled="resetting" @click="reset()">
+                        <span class="loading loading-spinner loading-xs" x-show="resetting" x-cloak></span>
+                        Start a new conversation
+                    </button>
+                </div>
+            </div>
+
+            <form method="dialog" class="modal-backdrop">
+                <button>close</button>
+            </form>
+        </dialog>
     </div>
 @endsection
