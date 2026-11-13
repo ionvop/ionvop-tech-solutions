@@ -180,6 +180,50 @@ test('a message is required and limited in length', function () {
     Http::assertNothingSent();
 });
 
+test('forgetting a conversation clears the cookie but keeps the records', function () {
+    $conversation = Conversation::factory()->withClient('Jomar', 'jomar@example.com')->create();
+
+    $conversation->messages()->create([
+        'role' => Message::ROLE_CLIENT,
+        'type' => 'text',
+        'body' => 'We still write sales in a notebook.',
+    ]);
+
+    $response = $this->withCookie(Conversation::COOKIE, $conversation->reference)
+        ->deleteJson(route('chat.conversation.forget'));
+
+    $response->assertOk()
+        ->assertJsonPath('conversation.reference', null)
+        ->assertJsonPath('conversation.label', 'Project conversation')
+        ->assertJsonPath('conversation.stage', Conversation::INITIAL_STAGE)
+        ->assertJsonPath('conversation.ai_enabled', true)
+        ->assertJsonCount(0, 'messages')
+        ->assertCookieExpired(Conversation::COOKIE);
+
+    expect(Conversation::query()->whereKey($conversation->id)->exists())->toBeTrue()
+        ->and($conversation->messages()->count())->toBe(1);
+});
+
+test('forgetting without a conversation cookie is harmless', function () {
+    $this->deleteJson(route('chat.conversation.forget'))
+        ->assertOk()
+        ->assertJsonPath('conversation.reference', null)
+        ->assertJsonCount(0, 'messages');
+
+    expect(Conversation::query()->count())->toBe(0);
+});
+
+test('the chat page offers a way to start a new conversation', function () {
+    $conversation = Conversation::factory()->create();
+
+    $this->withCookie(Conversation::COOKIE, $conversation->reference)
+        ->get(route('chat'))
+        ->assertOk()
+        ->assertSee('Danger zone')
+        ->assertSee('Start a new conversation')
+        ->assertSee('chat-reset-dialog');
+});
+
 test('a failed assistant call keeps the client message and reports an error', function () {
     Http::fake([
         'openrouter.test/*' => Http::response(['error' => ['message' => 'Provider unavailable']], 503),
