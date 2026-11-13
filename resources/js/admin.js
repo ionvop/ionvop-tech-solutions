@@ -1,3 +1,5 @@
+import { appendMessages, isNearBottom, lastMessageId, mergeFields, mergeList, replaceAll } from './transcript';
+
 const POLL_CONVERSATION_MS = 10_000;
 const POLL_LIST_MS = 30_000;
 
@@ -22,6 +24,7 @@ export default function admin(initial) {
         summarizing: false,
         deleting: false,
         polling: true,
+        pollInFlight: false,
         error: null,
         toast: null,
 
@@ -102,7 +105,7 @@ export default function admin(initial) {
                 const payload = await this.request(this.url('show', reference));
 
                 this.selected = payload.conversation;
-                this.messages = payload.messages ?? [];
+                replaceAll(this.messages, payload.messages ?? []);
                 this.syncForm();
                 this.pane = 'chat';
 
@@ -132,7 +135,7 @@ export default function admin(initial) {
             try {
                 const payload = await this.request(`${this.endpoints.list}${suffix}`);
 
-                this.conversations = payload.conversations ?? [];
+                mergeList(this.conversations, payload.conversations ?? [], (conversation) => conversation.reference);
             } catch {
                 // A failed background refresh should not interrupt the admin.
             }
@@ -140,26 +143,60 @@ export default function admin(initial) {
 
         /**
          * Poll the open conversation for new messages.
+         *
+         * Only messages the dashboard has not rendered yet are requested, and they
+         * are appended to the existing list. Messages already on screen are never
+         * replaced, so text selection and scroll position survive every poll.
          */
         async pollConversation() {
-            if (! this.polling || this.selected === null || this.sending) {
+            if (! this.polling || this.selected === null || this.sending || this.pollInFlight) {
                 return;
             }
 
+            const reference = this.selected.reference;
+            const afterId = lastMessageId(this.messages);
+            const url = afterId > 0
+                ? `${this.url('show', reference)}?after_id=${afterId}`
+                : this.url('show', reference);
+
+            this.pollInFlight = true;
+
             try {
-                const payload = await this.request(this.url('show', this.selected.reference));
+                const payload = await this.request(url);
 
-                const grew = (payload.messages?.length ?? 0) !== this.messages.length;
+                // The admin may have switched conversations while the request was in flight.
+                if (this.selected?.reference !== reference) {
+                    return;
+                }
 
-                this.selected = payload.conversation;
-                this.messages = payload.messages ?? [];
+                const follow = isNearBottom(this.$refs.feed);
+                const appended = appendMessages(this.messages, payload.messages ?? []);
 
-                if (grew) {
+                if (payload.conversation) {
+                    this.mergeSelected(payload.conversation);
+                }
+
+                if (appended > 0 && follow) {
                     this.scrollToBottom();
                 }
             } catch {
                 // Ignore transient polling failures.
+            } finally {
+                this.pollInFlight = false;
             }
+        },
+
+        /**
+         * Update the selected conversation in place so unchanged bindings do not re-render.
+         */
+        mergeSelected(incoming) {
+            if (! this.selected) {
+                this.selected = incoming;
+
+                return;
+            }
+
+            mergeFields(this.selected, incoming);
         },
 
         /**
@@ -184,8 +221,8 @@ export default function admin(initial) {
                     body: { message: body },
                 });
 
-                this.messages.push(payload.message);
-                this.selected = payload.conversation;
+                appendMessages(this.messages, [payload.message]);
+                this.mergeSelected(payload.conversation);
                 this.syncForm();
                 this.scrollToBottom();
                 this.refreshList();
@@ -215,7 +252,7 @@ export default function admin(initial) {
                     body: this.formPayload(),
                 });
 
-                this.selected = payload.conversation;
+                this.mergeSelected(payload.conversation);
                 this.syncForm();
                 this.refreshList();
                 this.notify('Details saved.');
@@ -242,7 +279,7 @@ export default function admin(initial) {
                     method: 'POST',
                 });
 
-                this.selected = payload.conversation;
+                this.mergeSelected(payload.conversation);
                 this.notify('Summary generated.');
             } catch (exception) {
                 this.error = exception.message;
@@ -276,12 +313,16 @@ export default function admin(initial) {
 
                 document.getElementById('admin-delete-dialog')?.close();
 
-                this.conversations = this.conversations.filter(
-                    (conversation) => conversation.reference !== reference,
+                const index = this.conversations.findIndex(
+                    (conversation) => conversation.reference === reference,
                 );
 
+                if (index !== -1) {
+                    this.conversations.splice(index, 1);
+                }
+
                 this.selected = null;
-                this.messages = [];
+                replaceAll(this.messages, []);
                 this.syncForm();
                 this.notify('Conversation deleted.');
             } catch (exception) {
