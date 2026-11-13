@@ -110,6 +110,31 @@ test('a conversation can be opened with its transcript', function () {
         ->assertJsonPath('messages.0.body', 'We still write sales in a notebook.');
 });
 
+test('the transcript can be polled for messages newer than a cursor', function () {
+    $conversation = Conversation::factory()->create();
+
+    $first = $conversation->messages()->create([
+        'role' => Message::ROLE_CLIENT,
+        'type' => 'text',
+        'body' => 'First message.',
+    ]);
+
+    $conversation->messages()->create([
+        'role' => Message::ROLE_ADMIN,
+        'type' => 'text',
+        'body' => 'Second message.',
+    ]);
+
+    $this->actingAs($this->admin)
+        ->getJson(route('admin.conversations.show', [
+            'conversation' => $conversation,
+            'after_id' => $first->id,
+        ]))
+        ->assertOk()
+        ->assertJsonCount(1, 'messages')
+        ->assertJsonPath('messages.0.body', 'Second message.');
+});
+
 test('a self-paused message carries its reason in the transcript', function () {
     $conversation = Conversation::factory()->create(['ai_enabled' => false]);
 
