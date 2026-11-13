@@ -51,20 +51,33 @@ class ConversationController extends Controller
 
     /**
      * Show a single conversation with its transcript.
+     *
+     * Passing `after_id` returns only the messages the dashboard has not
+     * rendered yet, so polling can append instead of replacing the transcript.
      */
-    public function show(Conversation $conversation): JsonResponse
+    public function show(Request $request, Conversation $conversation): JsonResponse
     {
+        $validated = $request->validate([
+            'after_id' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $afterId = $validated['after_id'] ?? null;
+
+        // The guard keeps this from writing on every poll: it only fires when
+        // something arrived since the dashboard last looked.
         if ($conversation->hasUnread()) {
             $conversation->forceFill(['admin_read_at' => now()])->save();
         }
 
+        $query = $conversation->messages()->orderBy('id');
+
+        if ($afterId !== null) {
+            $query->where('id', '>', (int) $afterId);
+        }
+
         return response()->json([
             'conversation' => ConversationPayload::detail($conversation),
-            'messages' => $conversation->messages()
-                ->orderBy('id')
-                ->get()
-                ->map(ConversationPayload::message(...))
-                ->values(),
+            'messages' => $query->get()->map(ConversationPayload::message(...))->values(),
         ]);
     }
 
