@@ -18,6 +18,10 @@ Route::post('/chat/messages', [ChatController::class, 'store'])
     ->middleware('throttle:chat')
     ->name('chat.messages.store');
 
+Route::delete('/chat/conversation', [ChatController::class, 'forget'])
+    ->middleware('throttle:chat')
+    ->name('chat.conversation.forget');
+
 Route::prefix('admin')->group(function (): void {
     Route::get('login', [AuthController::class, 'showLogin'])->name('admin.login');
     Route::get('auth/google/redirect', [AuthController::class, 'redirectToGoogle'])->name('admin.auth.redirect');
