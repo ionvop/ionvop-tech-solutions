@@ -27,8 +27,9 @@ class ChatController extends Controller
         $conversation = $this->resolveConversation($request);
 
         return view('chat', [
-            'conversation' => $conversation,
-            'messages' => $conversation?->messages()->orderBy('id')->get() ?? collect(),
+            'conversation' => $this->conversationPayload($conversation),
+            'emptyConversation' => $this->conversationPayload(null),
+            'messages' => $this->transcript($conversation),
         ]);
     }
 
@@ -92,9 +93,16 @@ class ChatController extends Controller
 
     /**
      * Return the visitor's conversation and transcript for polling.
+     *
+     * Passing `after_id` returns only the messages the browser has not rendered
+     * yet, so the client can append instead of replacing the whole transcript.
      */
     public function messages(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'after_id' => ['nullable', 'integer', 'min:0'],
+        ]);
+
         $conversation = $this->resolveConversation($request);
 
         if ($conversation === null) {
@@ -106,12 +114,23 @@ class ChatController extends Controller
 
         return response()->json([
             'conversation' => $this->conversationPayload($conversation),
-            'messages' => $conversation->messages()
-                ->orderBy('id')
-                ->get()
-                ->map($this->messagePayload(...))
-                ->values()
-                ->all(),
+            'messages' => $this->transcript($conversation, $validated['after_id'] ?? null),
+        ]);
+    }
+
+    /**
+     * Forget the visitor's conversation so they start a new one.
+     *
+     * Only the browser cookie is cleared. The conversation and its messages stay
+     * in the database for ionvop, but the client can no longer reach them.
+     */
+    public function forget(): JsonResponse
+    {
+        Cookie::queue(Cookie::forget(Conversation::COOKIE));
+
+        return response()->json([
+            'conversation' => $this->conversationPayload(null),
+            'messages' => [],
         ]);
     }
 
@@ -132,27 +151,51 @@ class ChatController extends Controller
     /**
      * Shape a conversation for the chat page.
      *
+     * A null conversation produces the empty shell a first-time visitor sees.
+     *
      * @return array<string, mixed>
      */
-    private function conversationPayload(Conversation $conversation): array
+    private function conversationPayload(?Conversation $conversation): array
     {
         return [
-            'reference' => $conversation->reference,
-            'label' => $conversation->displayLabel(),
-            'client_name' => $conversation->client_name,
-            'client_email' => $conversation->client_email,
-            'stage' => $conversation->stage,
-            'stage_index' => $conversation->stageIndex(),
-            'currency' => $conversation->currency,
-            'first_month_amount' => $conversation->first_month_amount,
-            'monthly_amount' => $conversation->monthly_amount,
-            'amount_paid' => $conversation->amount_paid,
-            'amount_due' => $conversation->amount_due,
-            'contract_status' => $conversation->contract_status,
-            'contract_started_at' => $conversation->contract_started_at?->format('M j, Y'),
-            'contract_renews_at' => $conversation->contract_renews_at?->format('M j, Y'),
-            'ai_enabled' => $conversation->ai_enabled,
+            'reference' => $conversation?->reference,
+            'label' => $conversation?->displayLabel() ?? 'Project conversation',
+            'client_name' => $conversation?->client_name,
+            'client_email' => $conversation?->client_email,
+            'stage' => $conversation?->stage ?? Conversation::INITIAL_STAGE,
+            'stage_index' => $conversation?->stageIndex() ?? 0,
+            'currency' => $conversation?->currency ?? 'PHP',
+            'first_month_amount' => $conversation?->first_month_amount,
+            'monthly_amount' => $conversation?->monthly_amount,
+            'amount_paid' => $conversation?->amount_paid,
+            'amount_due' => $conversation?->amount_due,
+            'contract_status' => $conversation?->contract_status,
+            'contract_started_at' => $conversation?->contract_started_at?->format('M j, Y'),
+            'contract_renews_at' => $conversation?->contract_renews_at?->format('M j, Y'),
+            'ai_enabled' => $conversation?->ai_enabled ?? true,
         ];
+    }
+
+    /**
+     * Shape the transcript for a conversation.
+     *
+     * When a cursor is given, only messages newer than it are returned.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function transcript(?Conversation $conversation, ?int $afterId = null): array
+    {
+        if ($conversation === null) {
+            return [];
+        }
+
+        $query = $conversation->messages()->orderBy('id');
+
+        if ($afterId !== null) {
+            $query->where('id', '>', $afterId);
+        }
+
+        return $query->get()->map($this->messagePayload(...))->values()->all();
     }
 
     /**
