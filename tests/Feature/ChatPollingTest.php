@@ -33,6 +33,55 @@ test('polling returns an empty payload without a conversation cookie', function 
         ->assertJsonCount(0, 'messages');
 });
 
+test('polling with a cursor returns only messages that are not rendered yet', function () {
+    $conversation = Conversation::factory()->create();
+
+    $first = $conversation->messages()->create([
+        'role' => Message::ROLE_CLIENT,
+        'type' => 'text',
+        'body' => 'First message.',
+    ]);
+
+    $conversation->messages()->create([
+        'role' => Message::ROLE_ASSISTANT,
+        'type' => 'text',
+        'body' => 'Second message.',
+    ]);
+
+    $this->withCredentials()
+        ->withCookie(Conversation::COOKIE, $conversation->reference)
+        ->getJson(route('chat.messages.index', ['after_id' => $first->id]))
+        ->assertOk()
+        ->assertJsonCount(1, 'messages')
+        ->assertJsonPath('messages.0.body', 'Second message.');
+});
+
+test('polling with a cursor past the newest message returns nothing', function () {
+    $conversation = Conversation::factory()->create();
+
+    $message = $conversation->messages()->create([
+        'role' => Message::ROLE_CLIENT,
+        'type' => 'text',
+        'body' => 'Only message.',
+    ]);
+
+    $this->withCredentials()
+        ->withCookie(Conversation::COOKIE, $conversation->reference)
+        ->getJson(route('chat.messages.index', ['after_id' => $message->id]))
+        ->assertOk()
+        ->assertJsonCount(0, 'messages');
+});
+
+test('polling rejects a cursor that is not a number', function () {
+    $conversation = Conversation::factory()->create();
+
+    $this->withCredentials()
+        ->withCookie(Conversation::COOKIE, $conversation->reference)
+        ->getJson(route('chat.messages.index', ['after_id' => 'nonsense']))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('after_id');
+});
+
 test('polling reflects a paused assistant', function () {
     $conversation = Conversation::factory()->create(['ai_enabled' => false]);
 
