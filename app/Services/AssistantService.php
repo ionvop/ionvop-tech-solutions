@@ -163,6 +163,7 @@ class AssistantService
         $messages = [
             ['role' => 'system', 'content' => $this->systemPrompt()],
             ['role' => 'system', 'content' => $this->stateSummary($conversation)],
+            ['role' => 'system', 'content' => $this->waitingContext($conversation)],
         ];
 
         $history = $conversation->messages()
@@ -216,6 +217,33 @@ class AssistantService
             '- Conversation label: '.($conversation->label ?? 'not set'),
             '- Project stage: '.$conversation->stage,
             '- Summary on file: '.($conversation->summary === null ? 'no' : 'yes'),
+        ]);
+    }
+
+    /**
+     * Describe how long the client has been waiting for this turn.
+     *
+     * The assistant answers one conversation at a time, so a busy period can
+     * leave a client waiting. The elapsed time lets it acknowledge the delay
+     * instead of replying as if no time had passed.
+     */
+    private function waitingContext(Conversation $conversation): string
+    {
+        $latest = $conversation->messages()
+            ->where('role', Message::ROLE_CLIENT)
+            ->latest('id')
+            ->first();
+
+        if ($latest === null) {
+            return 'Waiting on the assistant: the client has not sent a message yet.';
+        }
+
+        $seconds = (int) round(abs($latest->created_at->diffInSeconds(now())));
+
+        return implode("\n", [
+            'Waiting on the assistant:',
+            '- The client\'s latest message arrived '.$latest->created_at->diffForHumans().'.',
+            '- That is '.$seconds.' seconds ago.',
         ]);
     }
 
