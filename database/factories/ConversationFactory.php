@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Conversation;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -34,6 +35,16 @@ class ConversationFactory extends Factory
             'client_name' => $name,
             'client_email' => $email,
             'label' => $name.' — hardware store',
+        ]);
+    }
+
+    /**
+     * Indicate that the client is waiting on the assistant.
+     */
+    public function pendingForAssistant(?DateTimeInterface $since = null): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'ai_pending_since' => $since ?? now(),
         ]);
     }
 
