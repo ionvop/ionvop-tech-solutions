@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
@@ -83,6 +84,16 @@ class Conversation extends Model
     }
 
     /**
+     * Get every file uploaded in the conversation.
+     *
+     * @return HasManyThrough<Attachment, Message, $this>
+     */
+    public function attachments(): HasManyThrough
+    {
+        return $this->hasManyThrough(Attachment::class, Message::class);
+    }
+
+    /**
      * Get the most recent message in the conversation.
      *
      * @return HasOne<Message, $this>
@@ -138,6 +149,19 @@ class Conversation extends Model
             'admin_read_at' => 'datetime',
             'ai_pending_since' => 'datetime',
         ];
+    }
+
+    /**
+     * Remove uploaded files before the database cascade drops their rows.
+     *
+     * Deleting through the database bypasses model events, so the files have to
+     * be removed here while the attachment rows are still readable.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (Conversation $conversation): void {
+            $conversation->attachments()->get()->each->deleteFile();
+        });
     }
 
     /**
