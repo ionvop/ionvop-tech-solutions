@@ -134,6 +134,7 @@ class ConversationController extends Controller
         $conversation->forceFill([
             'last_message_at' => $message->created_at,
             'admin_read_at' => now(),
+            'ai_pending_since' => null,
         ])->save();
 
         return response()->json([
