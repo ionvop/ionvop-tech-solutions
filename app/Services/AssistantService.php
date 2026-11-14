@@ -130,10 +130,10 @@ class AssistantService
             ['role' => 'system', 'content' => $this->stateSummary($conversation)],
         ];
 
-        $history = $conversation->messages()->orderBy('id')->get();
+        $history = $conversation->messages()->with('attachment')->orderBy('id')->get();
 
         foreach ($history as $message) {
-            if ($message->type !== 'text' || blank($message->body)) {
+            if (! $this->hasContent($message)) {
                 continue;
             }
 
@@ -167,13 +167,14 @@ class AssistantService
         ];
 
         $history = $conversation->messages()
+            ->with('attachment')
             ->orderByDesc('id')
             ->limit(self::HISTORY_LIMIT)
             ->get()
             ->reverse();
 
         foreach ($history as $message) {
-            if ($message->type !== 'text' || blank($message->body)) {
+            if (! $this->hasContent($message)) {
                 continue;
             }
 
@@ -184,25 +185,69 @@ class AssistantService
     }
 
     /**
+     * Determine whether a message carries anything worth sending to the model.
+     *
+     * A message with neither text nor an uploaded file is skipped, which keeps
+     * empty rows out of the transcript.
+     */
+    private function hasContent(Message $message): bool
+    {
+        return filled($message->body) || $message->attachment !== null;
+    }
+
+    /**
      * Convert a stored message into a model-facing history entry.
      *
      * Both the client and ionvop are human participants, so they are sent as
      * `user` turns and labelled with a prefix. Only the assistant speaks as
      * the assistant.
      *
+     * Uploaded files are described in a bracketed note instead of being sent to
+     * the model. The model cannot open them, so the note only tells it that a
+     * file exists and what it is called.
+     *
      * @return array{role: string, content: string}
      */
     private function historyEntry(Message $message): array
     {
+        $body = $this->messageBody($message);
+
         if ($message->isFromClient()) {
-            return ['role' => 'user', 'content' => '[CLIENT]: '.$message->body];
+            return ['role' => 'user', 'content' => '[CLIENT]: '.$body];
         }
 
         if ($message->isFromAdmin()) {
-            return ['role' => 'user', 'content' => '[IONVOP]: '.$message->body];
+            return ['role' => 'user', 'content' => '[IONVOP]: '.$body];
         }
 
-        return ['role' => 'assistant', 'content' => $message->body];
+        return ['role' => 'assistant', 'content' => $body];
+    }
+
+    /**
+     * Build the text a message contributes to the transcript.
+     *
+     * An uploaded file is announced with a note the model cannot act on beyond
+     * acknowledging it, followed by any caption the sender wrote.
+     */
+    private function messageBody(Message $message): string
+    {
+        $attachment = $message->attachment;
+        $body = trim((string) $message->body);
+
+        if ($attachment === null) {
+            return $body;
+        }
+
+        $uploader = $message->isFromAdmin() ? 'Ionvop' : 'The client';
+
+        $note = sprintf(
+            '[%s uploaded %s named "%s". You cannot open, read, watch, or listen to it.]',
+            $uploader,
+            $attachment->kindLabel(),
+            $attachment->original_name,
+        );
+
+        return $body === '' ? $note : $note.' '.$body;
     }
 
     /**
