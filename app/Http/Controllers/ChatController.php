@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Attachment;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Rules\AllowedChatUpload;
 use App\Services\AssistantDispatcher;
+use App\Services\ChatUploads;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
@@ -36,14 +39,20 @@ class ChatController extends Controller
     /**
      * Store a client message and let the assistant answer whoever is waiting.
      *
+     * A message may carry one uploaded file instead of, or alongside, its text.
      * The assistant answers at most one conversation per cooldown window, so this
      * request may return without a reply. The client picks it up on its next poll.
      */
-    public function store(Request $request, AssistantDispatcher $dispatcher): JsonResponse
+    public function store(Request $request, AssistantDispatcher $dispatcher, ChatUploads $uploads): JsonResponse
     {
         $validated = $request->validate([
-            'message' => ['required', 'string', 'max:2000'],
+            'message' => ['nullable', 'string', 'max:2000', 'required_without:file'],
+            'file' => ['nullable', 'file', new AllowedChatUpload($uploads)],
         ]);
+
+        $file = $request->file('file');
+        $kind = $file === null ? null : $uploads->kindFor($file);
+        $body = trim((string) ($validated['message'] ?? ''));
 
         $conversation = $this->resolveConversation($request);
         $created = [];
@@ -55,9 +64,13 @@ class ChatController extends Controller
 
         $clientMessage = $conversation->messages()->create([
             'role' => Message::ROLE_CLIENT,
-            'type' => 'text',
-            'body' => trim($validated['message']),
+            'type' => $kind ?? Message::TYPE_TEXT,
+            'body' => $body === '' ? null : $body,
         ]);
+
+        if ($file !== null && $kind !== null) {
+            $uploads->store($clientMessage, $file, $kind);
+        }
 
         $conversation->forceFill([
             'last_message_at' => $clientMessage->created_at,
@@ -213,7 +226,7 @@ class ChatController extends Controller
             return [];
         }
 
-        $query = $conversation->messages()->orderBy('id');
+        $query = $conversation->messages()->with('attachment')->orderBy('id');
 
         if ($afterId !== null) {
             $query->where('id', '>', $afterId);
@@ -235,6 +248,29 @@ class ChatController extends Controller
             'type' => $message->type,
             'body' => $message->body,
             'time' => $message->created_at->format('g:i A'),
+            'attachment' => $this->attachmentPayload($message->attachment),
+        ];
+    }
+
+    /**
+     * Shape an uploaded file for the chat page.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function attachmentPayload(?Attachment $attachment): ?array
+    {
+        if ($attachment === null) {
+            return null;
+        }
+
+        return [
+            'id' => $attachment->id,
+            'kind' => $attachment->kind,
+            'name' => $attachment->original_name,
+            'mime' => $attachment->mime_type,
+            'size' => $attachment->size,
+            'size_human' => $attachment->humanSize(),
+            'url' => route('chat.attachments.show', $attachment),
         ];
     }
 }
