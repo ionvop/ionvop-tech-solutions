@@ -16,6 +16,7 @@ class DashboardController extends Controller
     {
         $conversations = Conversation::query()
             ->withLastMessage()
+            ->with('lastMessage.attachment')
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
             ->get();
@@ -37,7 +38,7 @@ class DashboardController extends Controller
             'selected' => $selected === null ? null : ConversationPayload::detail($selected),
             'messages' => $selected === null
                 ? collect()
-                : $selected->messages()->orderBy('id')->get()->map(ConversationPayload::message(...))->values(),
+                : $selected->messages()->with('attachment')->orderBy('id')->get()->map(ConversationPayload::message(...))->values(),
             'stages' => Conversation::stageOptions(),
             'contractStatuses' => Conversation::CONTRACT_STATUSES,
             'currencies' => ['PHP', 'USD'],
