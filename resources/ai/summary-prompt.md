@@ -8,6 +8,8 @@ The transcript is labelled by speaker:
 - `[IONVOP]:` — ionvop, replying personally.
 - Unlabelled assistant turns — the first-contact assistant.
 
+Uploaded files appear as bracketed notes such as `[The client uploaded an image named "receipt.jpg". You cannot open, read, watch, or listen to it.]`. You cannot see the file itself. Mention that a file was shared and what it is called, but never describe or guess its contents.
+
 ## What to produce
 
 Write a short, factual brief ionvop can read in under a minute before replying. Use these labelled
