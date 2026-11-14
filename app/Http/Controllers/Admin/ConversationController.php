@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Rules\AllowedChatUpload;
 use App\Services\AssistantService;
+use App\Services\ChatUploads;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -26,6 +28,7 @@ class ConversationController extends Controller
 
         $query = Conversation::query()
             ->withLastMessage()
+            ->with('lastMessage.attachment')
             ->orderByDesc('last_message_at')
             ->orderByDesc('id');
 
@@ -69,7 +72,7 @@ class ConversationController extends Controller
             $conversation->forceFill(['admin_read_at' => now()])->save();
         }
 
-        $query = $conversation->messages()->orderBy('id');
+        $query = $conversation->messages()->with('attachment')->orderBy('id');
 
         if ($afterId !== null) {
             $query->where('id', '>', (int) $afterId);
@@ -118,18 +121,29 @@ class ConversationController extends Controller
 
     /**
      * Post a reply from ionvop into the conversation.
+     *
+     * A reply may carry one uploaded file instead of, or alongside, its text.
      */
-    public function storeMessage(Request $request, Conversation $conversation): JsonResponse
+    public function storeMessage(Request $request, Conversation $conversation, ChatUploads $uploads): JsonResponse
     {
         $validated = $request->validate([
-            'message' => ['required', 'string', 'max:2000'],
+            'message' => ['nullable', 'string', 'max:2000', 'required_without:file'],
+            'file' => ['nullable', 'file', new AllowedChatUpload($uploads)],
         ]);
+
+        $file = $request->file('file');
+        $kind = $file === null ? null : $uploads->kindFor($file);
+        $body = trim((string) ($validated['message'] ?? ''));
 
         $message = $conversation->messages()->create([
             'role' => Message::ROLE_ADMIN,
-            'type' => 'text',
-            'body' => trim($validated['message']),
+            'type' => $kind ?? Message::TYPE_TEXT,
+            'body' => $body === '' ? null : $body,
         ]);
+
+        if ($file !== null && $kind !== null) {
+            $uploads->store($message, $file, $kind);
+        }
 
         $conversation->forceFill([
             'last_message_at' => $message->created_at,
@@ -138,7 +152,7 @@ class ConversationController extends Controller
         ])->save();
 
         return response()->json([
-            'message' => ConversationPayload::message($message),
+            'message' => ConversationPayload::message($message->refresh()),
             'conversation' => ConversationPayload::detail($conversation->refresh()),
         ], 201);
     }
