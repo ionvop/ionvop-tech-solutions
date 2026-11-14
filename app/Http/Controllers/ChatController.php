@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Conversation;
 use App\Models\Message;
-use App\Services\AssistantService;
+use App\Services\AssistantDispatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
@@ -34,9 +34,12 @@ class ChatController extends Controller
     }
 
     /**
-     * Store a client message and reply with the assistant's response.
+     * Store a client message and let the assistant answer whoever is waiting.
+     *
+     * The assistant answers at most one conversation per cooldown window, so this
+     * request may return without a reply. The client picks it up on its next poll.
      */
-    public function store(Request $request, AssistantService $assistant): JsonResponse
+    public function store(Request $request, AssistantDispatcher $dispatcher): JsonResponse
     {
         $validated = $request->validate([
             'message' => ['required', 'string', 'max:2000'],
@@ -56,26 +59,17 @@ class ChatController extends Controller
             'body' => trim($validated['message']),
         ]);
 
-        $conversation->forceFill(['last_message_at' => $clientMessage->created_at])->save();
+        $conversation->forceFill([
+            'last_message_at' => $clientMessage->created_at,
+            'ai_pending_since' => $clientMessage->created_at,
+        ])->save();
 
         $created[] = $clientMessage;
-        $error = null;
 
-        if ($conversation->ai_enabled) {
-            try {
-                $reply = $assistant->respond($conversation);
+        $reply = $this->dispatch($dispatcher, $conversation);
 
-                if ($reply !== null) {
-                    $created[] = $reply;
-                }
-            } catch (Throwable $exception) {
-                Log::error('The chat assistant failed to respond.', [
-                    'conversation' => $conversation->reference,
-                    'exception' => $exception,
-                ]);
-
-                $error = 'The assistant could not reply right now. Your message was saved — please try again in a moment.';
-            }
+        if ($reply !== null) {
+            $created[] = $reply;
         }
 
         Cookie::queue(
@@ -87,17 +81,18 @@ class ChatController extends Controller
         return response()->json([
             'conversation' => $this->conversationPayload($conversation->refresh()),
             'messages' => array_map($this->messagePayload(...), $created),
-            'error' => $error,
-        ], $error === null ? 200 : 502);
+        ]);
     }
 
     /**
      * Return the visitor's conversation and transcript for polling.
      *
+     * Polling is the only heartbeat the application has, so each poll also gives
+     * the assistant a chance to answer the conversation that has waited longest.
      * Passing `after_id` returns only the messages the browser has not rendered
      * yet, so the client can append instead of replacing the whole transcript.
      */
-    public function messages(Request $request): JsonResponse
+    public function messages(Request $request, AssistantDispatcher $dispatcher): JsonResponse
     {
         $validated = $request->validate([
             'after_id' => ['nullable', 'integer', 'min:0'],
@@ -112,8 +107,10 @@ class ChatController extends Controller
             ]);
         }
 
+        $this->dispatch($dispatcher, $conversation);
+
         return response()->json([
-            'conversation' => $this->conversationPayload($conversation),
+            'conversation' => $this->conversationPayload($conversation->refresh()),
             'messages' => $this->transcript($conversation, $validated['after_id'] ?? null),
         ]);
     }
@@ -146,6 +143,33 @@ class ChatController extends Controller
         }
 
         return Conversation::query()->where('reference', $reference)->first();
+    }
+
+    /**
+     * Give the assistant a chance to answer, returning a reply for this conversation.
+     *
+     * A failure is logged and swallowed: the conversation stays pending, no cooldown
+     * starts, and the next request tries again. The client is never shown an error
+     * for a turn it did not ask for.
+     */
+    private function dispatch(AssistantDispatcher $dispatcher, Conversation $conversation): ?Message
+    {
+        try {
+            $result = $dispatcher->dispatch();
+        } catch (Throwable $exception) {
+            Log::error('The chat assistant failed to respond.', [
+                'conversation' => $conversation->reference,
+                'exception' => $exception,
+            ]);
+
+            return null;
+        }
+
+        if ($result['conversation']?->isNot($conversation)) {
+            return null;
+        }
+
+        return $result['message'];
     }
 
     /**
