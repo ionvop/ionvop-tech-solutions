@@ -12,8 +12,13 @@ export default function chat(initial) {
         endpoint: initial.endpoint ?? '',
         pollEndpoint: initial.pollEndpoint ?? '',
         forgetEndpoint: initial.forgetEndpoint ?? '',
+        uploadKinds: initial.uploadKinds ?? {},
 
         draft: '',
+        pendingFile: null,
+        pendingPreview: null,
+        uploadProgress: 0,
+        lightbox: null,
         sending: false,
         resetting: false,
         error: null,
@@ -35,14 +40,133 @@ export default function chat(initial) {
         destroy() {
             this.timers.forEach((timer) => clearInterval(timer));
             this.timers = [];
+            this.releasePreview();
         },
 
         get canSend() {
-            return this.draft.trim().length > 0 && ! this.sending && ! this.resetting;
+            return (this.draft.trim().length > 0 || this.pendingFile !== null)
+                && ! this.sending
+                && ! this.resetting;
         },
 
         get hasMessages() {
             return this.messages.length > 0;
+        },
+
+        /**
+         * Build the file picker's accept list from the configured kinds.
+         */
+        get accept() {
+            const extensions = Object.values(this.uploadKinds)
+                .flatMap((kind) => kind.extensions ?? [])
+                .map((extension) => `.${extension}`);
+
+            return extensions.join(',');
+        },
+
+        /**
+         * Open the hidden file picker.
+         *
+         * The photo button opens a picker limited to images; the attach button
+         * opens one that accepts every configured kind.
+         */
+        pickFile(kind = 'any') {
+            if (this.sending || this.resetting) {
+                return;
+            }
+
+            const input = kind === 'image' ? this.$refs.photoInput : this.$refs.fileInput;
+
+            input?.click();
+        },
+
+        /**
+         * Validate and stage a file the visitor picked.
+         *
+         * The server repeats every check; this only exists so an obviously
+         * wrong file is rejected before it is uploaded.
+         */
+        onFileSelected(event) {
+            const file = event.target?.files?.[0] ?? null;
+
+            event.target.value = '';
+
+            if (file === null) {
+                return;
+            }
+
+            const extension = (file.name.split('.').pop() ?? '').toLowerCase();
+            const kind = Object.entries(this.uploadKinds)
+                .find(([, rules]) => (rules.extensions ?? []).includes(extension));
+
+            if (kind === undefined) {
+                this.error = 'That file type is not supported. Attach an image, audio, video, or document.';
+
+                return;
+            }
+
+            const maxKilobytes = kind[1].max_kb ?? 0;
+
+            if (maxKilobytes > 0 && file.size > maxKilobytes * 1024) {
+                this.error = `That file is too large. The limit for this file type is ${this.humanSize(maxKilobytes * 1024)}.`;
+
+                return;
+            }
+
+            this.error = null;
+            this.releasePreview();
+            this.pendingFile = file;
+            this.pendingPreview = kind[0] === 'image' ? URL.createObjectURL(file) : null;
+        },
+
+        /**
+         * Drop the staged file without sending it.
+         */
+        removeFile() {
+            this.releasePreview();
+            this.pendingFile = null;
+            this.uploadProgress = 0;
+        },
+
+        /**
+         * Release the object URL used for the optimistic image preview.
+         */
+        releasePreview() {
+            if (this.pendingPreview !== null) {
+                URL.revokeObjectURL(this.pendingPreview);
+                this.pendingPreview = null;
+            }
+        },
+
+        /**
+         * Describe a byte count for humans.
+         */
+        humanSize(bytes) {
+            if (bytes < 1024) {
+                return `${bytes} B`;
+            }
+
+            if (bytes < 1024 * 1024) {
+                return `${Math.round(bytes / 1024)} KB`;
+            }
+
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        },
+
+        /**
+         * Open an image attachment in the lightbox.
+         */
+        openLightbox(attachment) {
+            this.lightbox = attachment;
+            document.getElementById('chat-lightbox')?.showModal();
+        },
+
+        /**
+         * Close the image lightbox.
+         */
+        closeLightbox() {
+            this.lightbox = null;
+            document.getElementById('chat-lightbox')?.close();
         },
 
         async send() {
@@ -51,9 +175,12 @@ export default function chat(initial) {
             }
 
             const body = this.draft.trim();
+            const file = this.pendingFile;
+            const preview = this.pendingPreview;
             const pendingId = `pending-${Date.now()}`;
 
             this.draft = '';
+            this.uploadProgress = 0;
             this.error = null;
             this.sending = true;
             this.$nextTick(() => this.resize());
@@ -61,29 +188,30 @@ export default function chat(initial) {
             this.messages.push({
                 id: pendingId,
                 role: 'client',
-                type: 'text',
+                type: file === null ? 'text' : this.kindOf(file),
                 body,
                 time: '',
                 pending: true,
+                attachment: file === null ? null : {
+                    id: pendingId,
+                    kind: this.kindOf(file),
+                    name: file.name,
+                    mime: file.type,
+                    size: file.size,
+                    size_human: this.humanSize(file.size),
+                    url: preview,
+                    local: true,
+                },
             });
 
             this.scrollToBottom();
 
             try {
-                const response = await fetch(this.endpoint, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-                    },
-                    body: JSON.stringify({ message: body }),
-                });
+                const payload = file === null
+                    ? await this.postJson({ message: body })
+                    : await this.postForm(body, file);
 
-                const payload = await response.json().catch(() => ({}));
-
-                if (! response.ok && ! Array.isArray(payload.messages)) {
+                if (! Array.isArray(payload.messages)) {
                     throw new Error(payload.message ?? 'The message could not be sent.');
                 }
 
@@ -93,15 +221,132 @@ export default function chat(initial) {
                 if (payload.conversation) {
                     this.mergeConversation(payload.conversation);
                 }
+
+                // The file is on the server now, so the staged copy and its
+                // object URL are no longer needed.
+                this.pendingFile = null;
+                this.pendingPreview = null;
+
+                if (preview !== null) {
+                    URL.revokeObjectURL(preview);
+                }
             } catch (exception) {
                 this.removePending(pendingId);
                 this.draft = body;
                 this.error = exception.message || 'The message could not be sent.';
+
+                // Keep the staged file so the visitor can retry without picking
+                // it again. Its preview URL is still live.
             } finally {
                 this.sending = false;
+                this.uploadProgress = 0;
                 this.scrollToBottom();
                 this.$nextTick(() => this.resize());
             }
+        },
+
+        /**
+         * Resolve the kind of a file from its extension.
+         */
+        kindOf(file) {
+            const extension = (file.name.split('.').pop() ?? '').toLowerCase();
+
+            const match = Object.entries(this.uploadKinds)
+                .find(([, rules]) => (rules.extensions ?? []).includes(extension));
+
+            return match === undefined ? 'file' : match[0];
+        },
+
+        /**
+         * Send a text-only message as JSON.
+         */
+        async postJson(body) {
+            const response = await fetch(this.endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                },
+                body: JSON.stringify(body),
+            });
+
+            return response.json().catch(() => ({}));
+        },
+
+        /**
+         * Send a message with a file, reporting upload progress.
+         *
+         * `fetch` cannot report upload progress, so this path uses XHR.
+         */
+        postForm(body, file) {
+            return new Promise((resolve, reject) => {
+                const form = new FormData();
+
+                if (body !== '') {
+                    form.append('message', body);
+                }
+
+                form.append('file', file);
+
+                const request = new XMLHttpRequest();
+
+                request.open('POST', this.endpoint);
+                request.setRequestHeader('Accept', 'application/json');
+                request.setRequestHeader(
+                    'X-CSRF-TOKEN',
+                    document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                );
+
+                request.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        this.uploadProgress = Math.round((event.loaded / event.total) * 100);
+                    }
+                };
+
+                request.onload = () => {
+                    let payload = {};
+
+                    try {
+                        payload = JSON.parse(request.responseText);
+                    } catch {
+                        payload = {};
+                    }
+
+                    if (request.status >= 200 && request.status < 300) {
+                        resolve(payload);
+
+                        return;
+                    }
+
+                    reject(new Error(this.errorMessage(payload, request.status)));
+                };
+
+                request.onerror = () => reject(new Error('The file could not be uploaded.'));
+                request.onabort = () => reject(new Error('The upload was cancelled.'));
+
+                request.send(form);
+            });
+        },
+
+        /**
+         * Pick the most useful message out of a failed response.
+         */
+        errorMessage(payload, status) {
+            if (typeof payload.message === 'string' && payload.message !== '') {
+                return payload.message;
+            }
+
+            const first = Object.values(payload.errors ?? {}).flat()[0];
+
+            if (typeof first === 'string') {
+                return first;
+            }
+
+            return status === 413
+                ? 'That file is too large to upload.'
+                : 'The message could not be sent.';
         },
 
         /**
@@ -281,6 +526,7 @@ export default function chat(initial) {
                 this.epoch += 1;
                 replaceAll(this.messages, payload.messages ?? []);
                 this.draft = '';
+                this.removeFile();
                 this.conversation = payload.conversation ?? this.emptyShell();
 
                 document.getElementById('chat-reset-dialog')?.close();
