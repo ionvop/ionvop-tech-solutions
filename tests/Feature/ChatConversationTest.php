@@ -67,7 +67,6 @@ test('sending a message starts a conversation and stores the cookie', function (
     ]);
 
     $response->assertOk()
-        ->assertJsonPath('error', null)
         ->assertJsonCount(3, 'messages')
         ->assertJsonPath('messages.0.role', 'assistant')
         ->assertJsonPath('messages.1.role', 'client')
@@ -224,21 +223,24 @@ test('the chat page offers a way to start a new conversation', function () {
         ->assertSee('chat-reset-dialog');
 });
 
-test('a failed assistant call keeps the client message and reports an error', function () {
+test('a failed assistant call keeps the client message and leaves the turn pending', function () {
     Http::fake([
         'openrouter.test/*' => Http::response(['error' => ['message' => 'Provider unavailable']], 503),
     ]);
 
     $response = $this->postJson(route('chat.messages.store'), ['message' => 'Hello there']);
 
-    $response->assertStatus(502)
+    $response->assertOk()
         ->assertJsonCount(2, 'messages')
         ->assertJsonPath('messages.0.role', 'assistant')
         ->assertJsonPath('messages.1.role', 'client')
         ->assertJsonPath('messages.1.body', 'Hello there')
-        ->assertJsonPath('error', fn (string $error): bool => str_contains($error, 'could not reply'));
+        ->assertJsonMissingPath('error');
 
-    expect(Message::query()->where('role', Message::ROLE_CLIENT)->count())->toBe(1);
+    $conversation = Conversation::query()->sole();
+
+    expect(Message::query()->where('role', Message::ROLE_CLIENT)->count())->toBe(1)
+        ->and($conversation->ai_pending_since)->not->toBeNull();
 });
 
 test('the assistant ignores actions it is not allowed to apply', function () {
@@ -272,7 +274,6 @@ test('the assistant can stay silent without storing a message', function () {
     $response = $this->postJson(route('chat.messages.store'), ['message' => 'asdkjhasd']);
 
     $response->assertOk()
-        ->assertJsonPath('error', null)
         ->assertJsonCount(2, 'messages')
         ->assertJsonPath('messages.1.role', 'client');
 
