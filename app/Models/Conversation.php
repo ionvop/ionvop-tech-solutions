@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\ConversationFactory;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -30,6 +31,7 @@ use Illuminate\Support\Str;
     'summary_generated_at',
     'ai_enabled',
     'admin_read_at',
+    'ai_pending_since',
 ])]
 class Conversation extends Model
 {
@@ -101,6 +103,22 @@ class Conversation extends Model
     }
 
     /**
+     * Limit the query to conversations the assistant still owes a turn.
+     *
+     * The oldest waiting client is served first, so the ordering key is the
+     * moment the client's latest message arrived.
+     *
+     * @param  Builder<Conversation>  $query
+     */
+    public function scopePendingForAssistant(Builder $query): void
+    {
+        $query->where('ai_enabled', true)
+            ->whereNotNull('ai_pending_since')
+            ->orderBy('ai_pending_since')
+            ->orderBy('id');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -118,6 +136,7 @@ class Conversation extends Model
             'summary_generated_at' => 'datetime',
             'ai_enabled' => 'boolean',
             'admin_read_at' => 'datetime',
+            'ai_pending_since' => 'datetime',
         ];
     }
 
@@ -192,6 +211,30 @@ class Conversation extends Model
             array_map(Str::lower(...), self::STAGES),
             self::STAGES,
         );
+    }
+
+    /**
+     * Record that the assistant no longer owes this conversation a turn.
+     *
+     * When the timestamp the assistant was answering is given, the update only
+     * applies if the conversation has not been marked pending again since. A
+     * client message that arrived while the model was thinking therefore keeps
+     * its place in the queue instead of being silently dropped.
+     */
+    public function markProcessedForAssistant(?DateTimeInterface $answeredSince = null): void
+    {
+        $query = static::query()->whereKey($this->getKey());
+
+        if ($answeredSince !== null) {
+            $query->where('ai_pending_since', $answeredSince);
+        }
+
+        if ($query->update(['ai_pending_since' => null]) === 0) {
+            return;
+        }
+
+        $this->setAttribute('ai_pending_since', null);
+        $this->syncOriginalAttribute('ai_pending_since');
     }
 
     /**
