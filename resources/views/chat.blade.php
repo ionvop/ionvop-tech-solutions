@@ -17,6 +17,7 @@
             endpoint: @js(route('chat.messages.store')),
             pollEndpoint: @js(route('chat.messages.index')),
             forgetEndpoint: @js(route('chat.conversation.forget')),
+            uploadKinds: @js(config('chat.uploads.kinds')),
         })"
     >
         <input id="chat-info-drawer" type="checkbox" class="drawer-toggle">
@@ -105,8 +106,66 @@
                                     'chat-bubble-secondary': message.role === 'admin',
                                     'opacity-60': message.pending === true,
                                 }"
-                                x-text="message.body"
-                            ></div>
+                            >
+                                <template x-if="message.attachment">
+                                    <div class="mb-1">
+                                        <template x-if="message.attachment.kind === 'image'">
+                                            <button
+                                                type="button"
+                                                class="block overflow-hidden rounded-field"
+                                                @click="openLightbox(message.attachment)"
+                                                :aria-label="`Open ${message.attachment.name}`"
+                                            >
+                                                <img
+                                                    :src="message.attachment.url"
+                                                    :alt="message.attachment.name"
+                                                    class="max-h-64 w-auto max-w-full object-cover"
+                                                    loading="lazy"
+                                                >
+                                            </button>
+                                        </template>
+
+                                        <template x-if="message.attachment.kind === 'audio'">
+                                            <audio
+                                                :src="message.attachment.url"
+                                                class="w-64 max-w-full"
+                                                controls
+                                                preload="metadata"
+                                            ></audio>
+                                        </template>
+
+                                        <template x-if="message.attachment.kind === 'video'">
+                                            <video
+                                                :src="message.attachment.url"
+                                                class="max-h-64 w-auto max-w-full rounded-field"
+                                                controls
+                                                preload="metadata"
+                                                playsinline
+                                            ></video>
+                                        </template>
+
+                                        <template x-if="message.attachment.kind === 'file'">
+                                            <a
+                                                :href="message.attachment.url"
+                                                class="link link-hover flex items-center gap-2 text-sm"
+                                                :download="message.attachment.name"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5 shrink-0" aria-hidden="true">
+                                                    <path d="M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z" />
+                                                </svg>
+                                                <span class="truncate" x-text="message.attachment.name"></span>
+                                            </a>
+                                        </template>
+
+                                        <p
+                                            class="mt-1 text-[0.65rem] opacity-60"
+                                            x-text="`${message.attachment.name} · ${message.attachment.size_human}`"
+                                        ></p>
+                                    </div>
+                                </template>
+
+                                <span x-show="message.body" x-text="message.body"></span>
+                            </div>
                         </div>
                     </template>
 
@@ -140,16 +199,43 @@
                         ></textarea>
 
                         <div class="mt-1 flex items-center gap-1">
-                            <div class="tooltip tooltip-top" data-tip="Attach a file — coming soon">
-                                <button type="button" class="btn btn-ghost btn-square btn-sm" aria-label="Attach a file" disabled>
+                            <input
+                                x-ref="fileInput"
+                                type="file"
+                                class="hidden"
+                                :accept="accept"
+                                @change="onFileSelected($event)"
+                            >
+                            <input
+                                x-ref="photoInput"
+                                type="file"
+                                class="hidden"
+                                accept="image/*"
+                                @change="onFileSelected($event)"
+                            >
+
+                            <div class="tooltip tooltip-top" data-tip="Attach a file">
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-square btn-sm"
+                                    aria-label="Attach a file"
+                                    :disabled="sending || resetting"
+                                    @click="pickFile()"
+                                >
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
                                         <path d="M720-330q0 104-73 177T470-80q-104 0-177-73t-73-177v-370q0-75 52.5-127.5T400-880q75 0 127.5 52.5T580-700v350q0 46-32 78t-78 32q-46 0-78-32t-32-78v-370h80v370q0 13 8.5 21.5T470-320q13 0 21.5-8.5T500-350v-350q0-42-29-71t-71-29q-42 0-71 29t-29 71v370q0 71 49.5 120.5T470-160q71 0 120.5-49.5T640-330v-390h80v390Z" />
                                     </svg>
                                 </button>
                             </div>
 
-                            <div class="tooltip tooltip-top" data-tip="Send a photo — coming soon">
-                                <button type="button" class="btn btn-ghost btn-square btn-sm" aria-label="Send a photo" disabled>
+                            <div class="tooltip tooltip-top" data-tip="Send a photo">
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-square btn-sm"
+                                    aria-label="Send a photo"
+                                    :disabled="sending || resetting"
+                                    @click="pickFile('image')"
+                                >
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
                                         <path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm40-80h480L570-480 450-320l-90-120-120 160Z" />
                                     </svg>
@@ -160,14 +246,6 @@
                                 <button type="button" class="btn btn-ghost btn-square btn-sm" aria-label="Record audio" disabled>
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
                                         <path d="M480-400q-50 0-85-35t-35-85v-240q0-50 35-85t85-35q50 0 85 35t35 85v240q0 50-35 85t-85 35Zm-40 280v-123q-104-14-172-93t-68-184h80q0 83 58.5 141.5T480-320q83 0 141.5-58.5T680-520h80q0 105-68 184t-172 93v123h-80Z" />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            <div class="tooltip tooltip-top" data-tip="Share your location — coming soon">
-                                <button type="button" class="btn btn-ghost btn-square btn-sm" aria-label="Share your location" disabled>
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
-                                        <path d="M480-480q33 0 56.5-23.5T560-560q0-33-23.5-56.5T480-640q-33 0-56.5 23.5T400-560q0 33 23.5 56.5T480-480Zm0 294q122-112 181-203.5T720-560q0-100-68-170t-172-70q-104 0-172 70t-68 170q0 69 59 160.5T480-186Z" />
                                     </svg>
                                 </button>
                             </div>
@@ -193,6 +271,40 @@
                                     </svg>
                                 </button>
                             </div>
+                        </div>
+
+                        <div class="mt-1" x-show="pendingFile" x-cloak>
+                            <div class="flex items-center gap-2 rounded-field bg-base-100 px-2 py-1.5">
+                                <img
+                                    x-show="pendingPreview"
+                                    :src="pendingPreview"
+                                    alt=""
+                                    class="size-8 rounded object-cover"
+                                >
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-xs font-medium" x-text="pendingFile?.name"></p>
+                                    <p class="text-[0.65rem] text-base-content/50" x-text="humanSize(pendingFile?.size ?? 0)"></p>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-square btn-xs"
+                                    aria-label="Remove attachment"
+                                    :disabled="sending"
+                                    @click="removeFile()"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-4" aria-hidden="true">
+                                        <path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360Z" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <progress
+                                class="progress progress-primary mt-1 h-1 w-full"
+                                :value="uploadProgress"
+                                max="100"
+                                x-show="sending && uploadProgress > 0"
+                                x-cloak
+                            ></progress>
                         </div>
                     </form>
                 </div>
@@ -357,6 +469,32 @@
                         Start a new conversation
                     </button>
                 </div>
+            </div>
+
+            <form method="dialog" class="modal-backdrop">
+                <button>close</button>
+            </form>
+        </dialog>
+
+        <dialog id="chat-lightbox" class="modal">
+            <div class="modal-box max-w-4xl p-2">
+                <template x-if="lightbox">
+                    <figure class="flex flex-col gap-2">
+                        <img
+                            :src="lightbox.url"
+                            :alt="lightbox.name"
+                            class="max-h-[75vh] w-full rounded-box object-contain"
+                        >
+                        <figcaption class="flex items-center justify-between gap-2 px-1 pb-1">
+                            <span class="truncate text-xs text-base-content/60" x-text="lightbox.name"></span>
+                            <a
+                                :href="lightbox.url"
+                                :download="lightbox.name"
+                                class="btn btn-ghost btn-xs"
+                            >Download</a>
+                        </figcaption>
+                    </figure>
+                </template>
             </div>
 
             <form method="dialog" class="modal-backdrop">
