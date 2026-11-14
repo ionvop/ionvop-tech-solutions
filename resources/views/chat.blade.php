@@ -100,7 +100,7 @@
                             </div>
 
                             <div
-                                class="chat-bubble whitespace-pre-line leading-relaxed"
+                                class="chat-bubble leading-relaxed"
                                 :class="{
                                     'chat-bubble-primary': message.role === 'client',
                                     'chat-bubble-secondary': message.role === 'admin',
@@ -164,7 +164,7 @@
                                     </div>
                                 </template>
 
-                                <span x-show="message.body" x-text="message.body"></span>
+                                <span class="whitespace-pre-line" x-show="message.body" x-text="message.body"></span>
                             </div>
                         </div>
                     </template>
