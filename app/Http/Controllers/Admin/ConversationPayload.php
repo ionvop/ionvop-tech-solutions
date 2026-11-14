@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Models\Attachment;
 use App\Models\Conversation;
 use App\Models\Message;
 
@@ -18,6 +19,7 @@ class ConversationPayload
     public static function summary(Conversation $conversation): array
     {
         $lastMessage = $conversation->lastMessage;
+        $preview = $lastMessage?->previewText();
 
         return [
             'reference' => $conversation->reference,
@@ -29,9 +31,9 @@ class ConversationPayload
             'ai_enabled' => $conversation->ai_enabled,
             'unread' => $conversation->hasUnread(),
             'message_count' => $conversation->messages_count ?? $conversation->messages()->count(),
-            'preview' => $lastMessage?->body === null
+            'preview' => $preview === null
                 ? null
-                : str($lastMessage->body)->squish()->limit(90)->toString(),
+                : str($preview)->squish()->limit(90)->toString(),
             'last_message_at' => $conversation->last_message_at?->toIso8601String(),
             'last_message_human' => $conversation->last_message_at?->diffForHumans(),
         ];
@@ -75,9 +77,32 @@ class ConversationPayload
             'type' => $message->type,
             'body' => $message->body,
             'reason' => $message->meta['reason'] ?? null,
+            'attachment' => self::attachment($message->attachment),
             'time' => $message->created_at->format('g:i A'),
             'date' => $message->created_at->format('M j, Y'),
             'created_at' => $message->created_at->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Shape an uploaded file for the transcript.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function attachment(?Attachment $attachment): ?array
+    {
+        if ($attachment === null) {
+            return null;
+        }
+
+        return [
+            'id' => $attachment->id,
+            'kind' => $attachment->kind,
+            'name' => $attachment->original_name,
+            'mime' => $attachment->mime_type,
+            'size' => $attachment->size,
+            'size_human' => $attachment->humanSize(),
+            'url' => route('admin.attachments.show', $attachment),
         ];
     }
 }
