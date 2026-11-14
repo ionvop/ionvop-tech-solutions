@@ -93,10 +93,6 @@ export default function chat(initial) {
                 if (payload.conversation) {
                     this.mergeConversation(payload.conversation);
                 }
-
-                if (payload.error) {
-                    this.error = payload.error;
-                }
             } catch (exception) {
                 this.removePending(pendingId);
                 this.draft = body;
