@@ -60,3 +60,9 @@
         display: none !important;
     }
 }
+
+@layer components {
+    .modal-box {
+        border: 1px solid var(--color-base-300);
+    }
+}
