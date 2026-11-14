@@ -249,13 +249,13 @@
                                 <span x-text="error"></span>
                             </div>
 
-                            <div
-                                class="alert alert-warning mb-2 text-sm"
+                            <p
+                                class="mb-2 text-center text-xs text-base-content/40"
                                 x-show="! selected.ai_enabled"
                                 x-cloak
                             >
-                                <span>The assistant is paused for this conversation. Replies come from you only.</span>
-                            </div>
+                                The assistant is paused — replies come from you only.
+                            </p>
 
                             <form class="rounded-box border border-base-300 bg-base-200/60 p-2" @submit.prevent="send()">
                                 <label for="admin-reply" class="sr-only">Reply as ionvop</label>
