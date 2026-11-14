@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\ConversationController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\ChatController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,10 +18,13 @@ Route::get('/chat/messages', [ChatController::class, 'messages'])
 Route::post('/chat/messages', [ChatController::class, 'store'])
     ->middleware('throttle:chat')
     ->name('chat.messages.store');
-
 Route::delete('/chat/conversation', [ChatController::class, 'forget'])
     ->middleware('throttle:chat')
     ->name('chat.conversation.forget');
+
+Route::get('/chat/attachments/{attachment}', [AttachmentController::class, 'show'])
+    ->middleware('throttle:chat-poll')
+    ->name('chat.attachments.show');
 
 Route::prefix('admin')->group(function (): void {
     Route::get('login', [AuthController::class, 'showLogin'])->name('admin.login');
@@ -46,5 +50,8 @@ Route::prefix('admin')->group(function (): void {
             ->name('admin.conversations.messages.store');
         Route::post('conversations/{conversation:reference}/summary', [ConversationController::class, 'summarize'])
             ->name('admin.conversations.summary');
+
+        Route::get('attachments/{attachment}', [AttachmentController::class, 'admin'])
+            ->name('admin.attachments.show');
     });
 });
