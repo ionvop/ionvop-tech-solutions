@@ -18,6 +18,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Recordings
+    |--------------------------------------------------------------------------
+    |
+    | Clients and ionvop can record a voice note in the composer instead of
+    | picking a file. The browser stops recording on its own once this many
+    | seconds have passed, which keeps a forgotten recording from growing
+    | without bound. The audio upload ceiling still applies on top of it.
+    |
+    */
+
+    'recordings' => [
+        'max_seconds' => (int) env('CHAT_RECORDING_MAX_SECONDS', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Uploads
     |--------------------------------------------------------------------------
     |
