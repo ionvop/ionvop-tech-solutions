@@ -5,7 +5,7 @@
                 <span class="grid size-9 -skew-x-6 place-items-center rounded-field bg-primary text-primary-content shadow-lg shadow-primary/40">
                     <span class="skew-x-6 text-lg font-bold leading-none">i</span>
                 </span>
-                <span class="text-lg font-bold tracking-tight">ionvop</span>
+                <span class="text-lg font-bold tracking-tight">ionvop Tech Solutions</span>
             </a>
         </div>
 
