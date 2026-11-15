@@ -69,6 +69,7 @@ test('sending a message starts a conversation and stores the cookie', function (
     $response->assertOk()
         ->assertJsonCount(3, 'messages')
         ->assertJsonPath('messages.0.role', 'assistant')
+        ->assertJsonPath('messages.0.body', 'Hi! Would you like me to handle your initial inquiries while ionvop is unavailable, or would you rather wait for ionvop to respond?')
         ->assertJsonPath('messages.1.role', 'client')
         ->assertJsonPath('messages.2.role', 'assistant')
         ->assertJsonPath('conversation.client_name', 'Jomar')
