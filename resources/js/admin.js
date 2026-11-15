@@ -1,3 +1,4 @@
+import { createAudioRecorder, formatDuration } from './recorder';
 import { appendMessages, isNearBottom, lastMessageId, mergeFields, mergeList, replaceAll } from './transcript';
 
 const POLL_CONVERSATION_MS = 10_000;
@@ -14,12 +15,14 @@ export default function admin(initial) {
         user: initial.user ?? {},
         endpoints: initial.endpoints ?? {},
         uploadKinds: initial.uploadKinds ?? {},
+        recordingMaxSeconds: initial.recordingMaxSeconds ?? 300,
 
         pane: 'chat',
         query: '',
         stageFilter: '',
         draft: '',
         pendingFile: null,
+        pendingPreview: null,
         uploadProgress: 0,
         lightbox: null,
         form: {},
@@ -32,11 +35,29 @@ export default function admin(initial) {
         error: null,
         toast: null,
 
+        recorder: null,
+        recording: false,
+        recordingElapsed: 0,
+
         timers: [],
         toastTimer: null,
 
         init() {
             this.pane = window.matchMedia('(min-width: 1024px)').matches ? 'chat' : 'list';
+
+            this.recorder = createAudioRecorder({
+                maxSeconds: this.recordingMaxSeconds,
+                onStage: (file) => this.stageRecording(file),
+                onError: (message) => {
+                    this.error = message;
+                },
+                onElapsed: (seconds) => {
+                    this.recordingElapsed = seconds;
+                },
+                onRecordingChange: (recording) => {
+                    this.recording = recording;
+                },
+            });
 
             this.syncForm();
             this.scrollToBottom();
@@ -49,10 +70,40 @@ export default function admin(initial) {
             });
         },
 
+        destroy() {
+            this.timers.forEach((timer) => clearInterval(timer));
+            this.timers = [];
+            clearTimeout(this.toastTimer);
+            this.recorder?.destroy();
+            this.releasePreview();
+        },
+
         get canSend() {
             return (this.draft.trim().length > 0 || this.pendingFile !== null)
                 && ! this.sending
+                && ! this.recording
                 && this.selected !== null;
+        },
+
+        /**
+         * Describe the recording length for the composer.
+         */
+        get recordingLabel() {
+            return formatDuration(this.recordingElapsed);
+        },
+
+        /**
+         * Describe the recording ceiling for the composer.
+         */
+        get recordingLimitLabel() {
+            return formatDuration(this.recordingMaxSeconds);
+        },
+
+        /**
+         * Resolve the kind of the staged file, so the composer can pick a preview.
+         */
+        get pendingKind() {
+            return this.pendingFile === null ? null : this.kindOf(this.pendingFile);
         },
 
         /**
@@ -70,11 +121,43 @@ export default function admin(initial) {
          * Open the hidden file picker.
          */
         pickFile() {
-            if (this.sending || this.selected === null) {
+            if (this.sending || this.recording || this.selected === null) {
                 return;
             }
 
             this.$refs.fileInput?.click();
+        },
+
+        /**
+         * Stage a finished recording as if ionvop had picked it from disk.
+         */
+        stageRecording(file) {
+            this.error = null;
+            this.releasePreview();
+            this.pendingFile = file;
+            this.pendingPreview = URL.createObjectURL(file);
+        },
+
+        /**
+         * Resolve the kind of a file from its extension.
+         */
+        kindOf(file) {
+            const extension = (file.name.split('.').pop() ?? '').toLowerCase();
+
+            const match = Object.entries(this.uploadKinds)
+                .find(([, rules]) => (rules.extensions ?? []).includes(extension));
+
+            return match === undefined ? 'file' : match[0];
+        },
+
+        /**
+         * Release the object URL used for the staged file preview.
+         */
+        releasePreview() {
+            if (this.pendingPreview !== null) {
+                URL.revokeObjectURL(this.pendingPreview);
+                this.pendingPreview = null;
+            }
         },
 
         /**
@@ -108,13 +191,20 @@ export default function admin(initial) {
             }
 
             this.error = null;
+            this.releasePreview();
             this.pendingFile = file;
+
+            // Images and audio both get an inline preview in the composer.
+            this.pendingPreview = ['image', 'audio'].includes(kind[0])
+                ? URL.createObjectURL(file)
+                : null;
         },
 
         /**
          * Drop the staged file without sending it.
          */
         removeFile() {
+            this.releasePreview();
             this.pendingFile = null;
             this.uploadProgress = 0;
         },
@@ -340,7 +430,9 @@ export default function admin(initial) {
                 this.scrollToBottom();
                 this.refreshList();
 
-                // The file is on the server now, so the staged copy is no longer needed.
+                // The file is on the server now, so the staged copy and its
+                // object URL are no longer needed.
+                this.releasePreview();
                 this.pendingFile = null;
             } catch (exception) {
                 this.draft = body;
