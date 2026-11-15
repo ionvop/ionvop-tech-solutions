@@ -17,6 +17,7 @@
             currencies: @js($currencies),
             user: @js(['email' => $user->email]),
             uploadKinds: @js(config('chat.uploads.kinds')),
+            recordingMaxSeconds: @js(config('chat.recordings.max_seconds')),
             endpoints: {
                 list: @js(route('admin.conversations.index')),
                 show: @js(route('admin.conversations.show', ['conversation' => '__REFERENCE__'])),
@@ -317,6 +318,24 @@
                             </p>
 
                             <form class="rounded-box border border-base-300 bg-base-200/60 p-2" @submit.prevent="send()">
+                                <div
+                                    class="mb-1 flex items-center gap-2 rounded-field bg-base-100 px-2 py-1.5"
+                                    x-show="recording"
+                                    x-cloak
+                                >
+                                    <span class="status status-error status-sm animate-pulse"></span>
+                                    <span class="text-xs font-medium tabular-nums" role="timer" x-text="recordingLabel"></span>
+                                    <span class="text-[0.65rem] text-base-content/40" x-text="`of ${recordingLimitLabel}`"></span>
+
+                                    <button
+                                        type="button"
+                                        class="btn btn-ghost btn-xs ml-auto"
+                                        @click="recorder.cancel()"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+
                                 <label for="admin-reply" class="sr-only">Reply as ionvop</label>
                                 <textarea
                                     id="admin-reply"
@@ -324,8 +343,9 @@
                                     x-model="draft"
                                     rows="1"
                                     class="textarea textarea-ghost min-h-11 w-full resize-none px-2 py-1.5 text-sm leading-relaxed"
-                                    placeholder="Reply as ionvop…"
+                                    :placeholder="recording ? 'Recording a voice note…' : 'Reply as ionvop…'"
                                     maxlength="2000"
+                                    :disabled="recording"
                                     @input="resize()"
                                     @keydown.enter="if (! $event.shiftKey) { $event.preventDefault(); send(); }"
                                 ></textarea>
@@ -344,11 +364,51 @@
                                             type="button"
                                             class="btn btn-ghost btn-square btn-sm"
                                             aria-label="Attach a file"
-                                            :disabled="sending"
+                                            :disabled="sending || recording"
                                             @click="pickFile()"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
                                                 <path d="M720-330q0 104-73 177T470-80q-104 0-177-73t-73-177v-370q0-75 52.5-127.5T400-880q75 0 127.5 52.5T580-700v350q0 46-32 78t-78 32q-46 0-78-32t-32-78v-370h80v370q0 13 8.5 21.5T470-320q13 0 21.5-8.5T500-350v-350q0-42-29-71t-71-29q-42 0-71 29t-29 71v370q0 71 49.5 120.5T470-160q71 0 120.5-49.5T640-330v-390h80v390Z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    <div
+                                        class="tooltip tooltip-top"
+                                        :data-tip="! recorder?.supported
+                                            ? 'Recording is not available in this browser'
+                                            : (recording ? 'Stop recording' : 'Record audio')"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="btn btn-ghost btn-square btn-sm"
+                                            :class="recording ? 'text-error' : ''"
+                                            :aria-label="recording ? 'Stop recording' : 'Record audio'"
+                                            :aria-pressed="recording"
+                                            :disabled="sending || ! recorder?.supported"
+                                            @click="recorder.toggle()"
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 -960 960 960"
+                                                fill="currentColor"
+                                                class="size-5"
+                                                aria-hidden="true"
+                                                x-show="! recording"
+                                            >
+                                                <path d="M480-400q-50 0-85-35t-35-85v-240q0-50 35-85t85-35q50 0 85 35t35 85v240q0 50-35 85t-85 35Zm-40 280v-123q-104-14-172-93t-68-184h80q0 83 58.5 141.5T480-320q83 0 141.5-58.5T680-520h80q0 105-68 184t-172 93v123h-80Z" />
+                                            </svg>
+
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 -960 960 960"
+                                                fill="currentColor"
+                                                class="size-5"
+                                                aria-hidden="true"
+                                                x-show="recording"
+                                                x-cloak
+                                            >
+                                                <path d="M240-240h480v-480H240v480Z" />
                                             </svg>
                                         </button>
                                     </div>
@@ -367,6 +427,12 @@
 
                                 <div class="mt-1" x-show="pendingFile" x-cloak>
                                     <div class="flex items-center gap-2 rounded-field bg-base-100 px-2 py-1.5">
+                                        <img
+                                            x-show="pendingKind === 'image' && pendingPreview"
+                                            :src="pendingPreview"
+                                            alt=""
+                                            class="size-8 rounded object-cover"
+                                        >
                                         <div class="min-w-0 flex-1">
                                             <p class="truncate text-xs font-medium" x-text="pendingFile?.name"></p>
                                             <p class="text-[0.65rem] text-base-content/50" x-text="humanSize(pendingFile?.size ?? 0)"></p>
@@ -383,6 +449,15 @@
                                             </svg>
                                         </button>
                                     </div>
+
+                                    <audio
+                                        x-show="pendingKind === 'audio' && pendingPreview"
+                                        :src="pendingPreview"
+                                        class="mt-1 w-full"
+                                        controls
+                                        preload="metadata"
+                                        x-cloak
+                                    ></audio>
 
                                     <progress
                                         class="progress progress-primary mt-1 h-1 w-full"
