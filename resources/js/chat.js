@@ -1,4 +1,4 @@
-import { appendMessages, isNearBottom, lastMessageId, mergeFields, replaceAll } from './transcript';
+import { appendMessages, isNearBottom, lastMessageId, mergeFields, reconcileVirtualGreeting, replaceAll } from './transcript';
 
 const POLL_MS = 10_000;
 
@@ -28,6 +28,7 @@ export default function chat(initial) {
         epoch: 0,
 
         init() {
+            this.messages = this.messagesWithGreeting(this.messages);
             this.scrollToBottom();
 
             this.timers.push(setInterval(() => this.poll(), POLL_MS));
@@ -47,10 +48,6 @@ export default function chat(initial) {
             return (this.draft.trim().length > 0 || this.pendingFile !== null)
                 && ! this.sending
                 && ! this.resetting;
-        },
-
-        get hasMessages() {
-            return this.messages.length > 0;
         },
 
         /**
@@ -216,7 +213,8 @@ export default function chat(initial) {
                 }
 
                 this.removePending(pendingId);
-                appendMessages(this.messages, payload.messages ?? []);
+                const messages = reconcileVirtualGreeting(this.messages, payload.messages, this.greeting);
+                appendMessages(this.messages, messages);
 
                 if (payload.conversation) {
                     this.mergeConversation(payload.conversation);
@@ -443,7 +441,7 @@ export default function chat(initial) {
 
                 const payload = await response.json().catch(() => ({}));
 
-                replaceAll(this.messages, payload.messages ?? []);
+                replaceAll(this.messages, this.messagesWithGreeting(payload.messages));
                 this.conversation = payload.conversation ?? this.emptyShell();
                 this.scrollToBottom();
             } catch {
@@ -456,6 +454,33 @@ export default function chat(initial) {
          */
         emptyShell() {
             return { ...(this.emptyConversation ?? {}) };
+        },
+
+        /**
+         * Keep the greeting in the transcript whenever the conversation is empty.
+         */
+        messagesWithGreeting(messages) {
+            if (Array.isArray(messages) && messages.length > 0) {
+                return messages;
+            }
+
+            return [this.greetingMessage()];
+        },
+
+        /**
+         * Build the local greeting entry before a conversation is persisted.
+         */
+        greetingMessage() {
+            return {
+                id: 'virtual-greeting',
+                renderKey: 'greeting',
+                role: 'assistant',
+                type: 'text',
+                body: this.greeting,
+                time: '',
+                attachment: null,
+                virtualGreeting: true,
+            };
         },
 
         /**
@@ -524,7 +549,7 @@ export default function chat(initial) {
                 }
 
                 this.epoch += 1;
-                replaceAll(this.messages, payload.messages ?? []);
+                replaceAll(this.messages, this.messagesWithGreeting(payload.messages));
                 this.draft = '';
                 this.removeFile();
                 this.conversation = payload.conversation ?? this.emptyShell();
