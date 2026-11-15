@@ -1,3 +1,4 @@
+import { createAudioRecorder, formatDuration } from './recorder';
 import { appendMessages, isNearBottom, lastMessageId, mergeFields, reconcileVirtualGreeting, replaceAll } from './transcript';
 
 const POLL_MS = 10_000;
@@ -13,6 +14,7 @@ export default function chat(initial) {
         pollEndpoint: initial.pollEndpoint ?? '',
         forgetEndpoint: initial.forgetEndpoint ?? '',
         uploadKinds: initial.uploadKinds ?? {},
+        recordingMaxSeconds: initial.recordingMaxSeconds ?? 300,
 
         draft: '',
         pendingFile: null,
@@ -27,9 +29,27 @@ export default function chat(initial) {
         timers: [],
         epoch: 0,
 
+        recorder: null,
+        recording: false,
+        recordingElapsed: 0,
+
         init() {
             this.messages = this.messagesWithGreeting(this.messages);
             this.scrollToBottom();
+
+            this.recorder = createAudioRecorder({
+                maxSeconds: this.recordingMaxSeconds,
+                onStage: (file) => this.stageRecording(file),
+                onError: (message) => {
+                    this.error = message;
+                },
+                onElapsed: (seconds) => {
+                    this.recordingElapsed = seconds;
+                },
+                onRecordingChange: (recording) => {
+                    this.recording = recording;
+                },
+            });
 
             this.timers.push(setInterval(() => this.poll(), POLL_MS));
 
@@ -41,13 +61,36 @@ export default function chat(initial) {
         destroy() {
             this.timers.forEach((timer) => clearInterval(timer));
             this.timers = [];
+            this.recorder?.destroy();
             this.releasePreview();
         },
 
         get canSend() {
             return (this.draft.trim().length > 0 || this.pendingFile !== null)
                 && ! this.sending
-                && ! this.resetting;
+                && ! this.resetting
+                && ! this.recording;
+        },
+
+        /**
+         * Describe the recording length for the composer.
+         */
+        get recordingLabel() {
+            return formatDuration(this.recordingElapsed);
+        },
+
+        /**
+         * Describe the recording ceiling for the composer.
+         */
+        get recordingLimitLabel() {
+            return formatDuration(this.recordingMaxSeconds);
+        },
+
+        /**
+         * Resolve the kind of the staged file, so the composer can pick a preview.
+         */
+        get pendingKind() {
+            return this.pendingFile === null ? null : this.kindOf(this.pendingFile);
         },
 
         /**
@@ -68,13 +111,26 @@ export default function chat(initial) {
          * opens one that accepts every configured kind.
          */
         pickFile(kind = 'any') {
-            if (this.sending || this.resetting) {
+            if (this.sending || this.resetting || this.recording) {
                 return;
             }
 
             const input = kind === 'image' ? this.$refs.photoInput : this.$refs.fileInput;
 
             input?.click();
+        },
+
+        /**
+         * Stage a finished recording as if the visitor had picked it from disk.
+         *
+         * A recording replaces whatever was staged before, matching how picking
+         * a second file behaves.
+         */
+        stageRecording(file) {
+            this.error = null;
+            this.releasePreview();
+            this.pendingFile = file;
+            this.pendingPreview = URL.createObjectURL(file);
         },
 
         /**
@@ -113,7 +169,11 @@ export default function chat(initial) {
             this.error = null;
             this.releasePreview();
             this.pendingFile = file;
-            this.pendingPreview = kind[0] === 'image' ? URL.createObjectURL(file) : null;
+
+            // Images and audio both get an inline preview in the composer.
+            this.pendingPreview = ['image', 'audio'].includes(kind[0])
+                ? URL.createObjectURL(file)
+                : null;
         },
 
         /**
@@ -525,7 +585,7 @@ export default function chat(initial) {
          * reference to it is cleared.
          */
         async reset() {
-            if (this.resetting || this.sending || this.forgetEndpoint === '') {
+            if (this.resetting || this.sending || this.recording || this.forgetEndpoint === '') {
                 return;
             }
 
