@@ -63,19 +63,7 @@
                 <div class="mx-auto flex w-full max-w-3xl flex-col px-3 py-4 sm:px-6">
                     <div class="divider my-2 text-xs text-base-content/40">Today</div>
 
-                    <div class="chat chat-start" x-show="! hasMessages" x-cloak>
-                        <div class="chat-image avatar avatar-placeholder">
-                            <div class="w-8 rounded-full bg-primary text-xs font-semibold text-primary-content">
-                                <span>i</span>
-                            </div>
-                        </div>
-                        <div class="chat-header">
-                            <span>Assistant</span>
-                        </div>
-                        <div class="chat-bubble leading-relaxed" x-text="greeting"></div>
-                    </div>
-
-                    <template x-for="message in messages" :key="message.id">
+                    <template x-for="message in messages" :key="message.renderKey ?? message.id">
                         <div class="chat" :class="message.role === 'client' ? 'chat-end' : 'chat-start'">
                             <div class="chat-image avatar avatar-placeholder">
                                 <div
