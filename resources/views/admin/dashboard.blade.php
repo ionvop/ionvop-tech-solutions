@@ -350,12 +350,19 @@
                                     @keydown.enter="if (! $event.shiftKey) { $event.preventDefault(); send(); }"
                                 ></textarea>
 
-                                <div class="mt-1 flex items-center gap-2">
+                                <div class="mt-1 flex items-center gap-1">
                                     <input
                                         x-ref="fileInput"
                                         type="file"
                                         class="hidden"
                                         :accept="accept"
+                                        @change="onFileSelected($event)"
+                                    >
+                                    <input
+                                        x-ref="photoInput"
+                                        type="file"
+                                        class="hidden"
+                                        accept="image/*"
                                         @change="onFileSelected($event)"
                                     >
 
@@ -369,6 +376,20 @@
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
                                                 <path d="M720-330q0 104-73 177T470-80q-104 0-177-73t-73-177v-370q0-75 52.5-127.5T400-880q75 0 127.5 52.5T580-700v350q0 46-32 78t-78 32q-46 0-78-32t-32-78v-370h80v370q0 13 8.5 21.5T470-320q13 0 21.5-8.5T500-350v-350q0-42-29-71t-71-29q-42 0-71 29t-29 71v370q0 71 49.5 120.5T470-160q71 0 120.5-49.5T640-330v-390h80v390Z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    <div class="tooltip tooltip-top" data-tip="Send a photo">
+                                        <button
+                                            type="button"
+                                            class="btn btn-ghost btn-square btn-sm"
+                                            aria-label="Send a photo"
+                                            :disabled="sending || recording"
+                                            @click="pickFile('image')"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
+                                                <path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm40-80h480L570-480 450-320l-90-120-120 160Z" />
                                             </svg>
                                         </button>
                                     </div>
@@ -413,16 +434,27 @@
                                         </button>
                                     </div>
 
-                                    <span class="text-xs text-base-content/40">Enter to send</span>
-
-                                    <button
-                                        type="submit"
-                                        class="btn btn-primary btn-sm ml-auto gap-1.5"
-                                        :disabled="! canSend"
-                                    >
-                                        <span class="loading loading-spinner loading-xs" x-show="sending" x-cloak></span>
-                                        Send
-                                    </button>
+                                    <div class="ml-auto flex items-center gap-2">
+                                        <span class="hidden text-xs text-base-content/40 sm:inline">Enter to send</span>
+                                        <button
+                                            type="submit"
+                                            class="btn btn-primary btn-square btn-sm"
+                                            aria-label="Send message"
+                                            :disabled="! canSend"
+                                        >
+                                            <span class="loading loading-spinner loading-xs" x-show="sending" x-cloak></span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 -960 960 960"
+                                                fill="currentColor"
+                                                class="size-5"
+                                                aria-hidden="true"
+                                                x-show="! sending"
+                                            >
+                                                <path d="M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Z" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div class="mt-1" x-show="pendingFile" x-cloak>
