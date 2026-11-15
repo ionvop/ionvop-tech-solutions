@@ -18,6 +18,7 @@
             pollEndpoint: @js(route('chat.messages.index')),
             forgetEndpoint: @js(route('chat.conversation.forget')),
             uploadKinds: @js(config('chat.uploads.kinds')),
+            recordingMaxSeconds: @js(config('chat.recordings.max_seconds')),
         })"
     >
         <input id="chat-info-drawer" type="checkbox" class="drawer-toggle">
@@ -173,6 +174,24 @@
                         class="rounded-box border border-base-300 bg-base-200/60 p-2"
                         @submit.prevent="send()"
                     >
+                        <div
+                            class="mb-1 flex items-center gap-2 rounded-field bg-base-100 px-2 py-1.5"
+                            x-show="recording"
+                            x-cloak
+                        >
+                            <span class="status status-error status-sm animate-pulse"></span>
+                            <span class="text-xs font-medium tabular-nums" role="timer" x-text="recordingLabel"></span>
+                            <span class="text-[0.65rem] text-base-content/40" x-text="`of ${recordingLimitLabel}`"></span>
+
+                            <button
+                                type="button"
+                                class="btn btn-ghost btn-xs ml-auto"
+                                @click="recorder.cancel()"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+
                         <label for="chat-message" class="sr-only">Message</label>
                         <textarea
                             id="chat-message"
@@ -180,8 +199,9 @@
                             x-model="draft"
                             rows="1"
                             class="textarea textarea-ghost min-h-11 w-full resize-none px-2 py-1.5 text-sm leading-relaxed"
-                            placeholder="Describe your business problem…"
+                            :placeholder="recording ? 'Recording a voice note…' : 'Describe your business problem…'"
                             maxlength="2000"
+                            :disabled="recording"
                             @input="resize()"
                             @keydown.enter="if (! $event.shiftKey) { $event.preventDefault(); send(); }"
                         ></textarea>
@@ -207,7 +227,7 @@
                                     type="button"
                                     class="btn btn-ghost btn-square btn-sm"
                                     aria-label="Attach a file"
-                                    :disabled="sending || resetting"
+                                    :disabled="sending || resetting || recording"
                                     @click="pickFile()"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
@@ -221,7 +241,7 @@
                                     type="button"
                                     class="btn btn-ghost btn-square btn-sm"
                                     aria-label="Send a photo"
-                                    :disabled="sending || resetting"
+                                    :disabled="sending || resetting || recording"
                                     @click="pickFile('image')"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
@@ -230,10 +250,42 @@
                                 </button>
                             </div>
 
-                            <div class="tooltip tooltip-top" data-tip="Record audio — coming soon">
-                                <button type="button" class="btn btn-ghost btn-square btn-sm" aria-label="Record audio" disabled>
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5" aria-hidden="true">
+                            <div
+                                class="tooltip tooltip-top"
+                                :data-tip="! recorder?.supported
+                                    ? 'Recording is not available in this browser'
+                                    : (recording ? 'Stop recording' : 'Record audio')"
+                            >
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-square btn-sm"
+                                    :class="recording ? 'text-error' : ''"
+                                    :aria-label="recording ? 'Stop recording' : 'Record audio'"
+                                    :aria-pressed="recording"
+                                    :disabled="sending || resetting || ! recorder?.supported"
+                                    @click="recorder.toggle()"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 -960 960 960"
+                                        fill="currentColor"
+                                        class="size-5"
+                                        aria-hidden="true"
+                                        x-show="! recording"
+                                    >
                                         <path d="M480-400q-50 0-85-35t-35-85v-240q0-50 35-85t85-35q50 0 85 35t35 85v240q0 50-35 85t-85 35Zm-40 280v-123q-104-14-172-93t-68-184h80q0 83 58.5 141.5T480-320q83 0 141.5-58.5T680-520h80q0 105-68 184t-172 93v123h-80Z" />
+                                    </svg>
+
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 -960 960 960"
+                                        fill="currentColor"
+                                        class="size-5"
+                                        aria-hidden="true"
+                                        x-show="recording"
+                                        x-cloak
+                                    >
+                                        <path d="M240-240h480v-480H240v480Z" />
                                     </svg>
                                 </button>
                             </div>
@@ -264,7 +316,7 @@
                         <div class="mt-1" x-show="pendingFile" x-cloak>
                             <div class="flex items-center gap-2 rounded-field bg-base-100 px-2 py-1.5">
                                 <img
-                                    x-show="pendingPreview"
+                                    x-show="pendingKind === 'image' && pendingPreview"
                                     :src="pendingPreview"
                                     alt=""
                                     class="size-8 rounded object-cover"
@@ -285,6 +337,15 @@
                                     </svg>
                                 </button>
                             </div>
+
+                            <audio
+                                x-show="pendingKind === 'audio' && pendingPreview"
+                                :src="pendingPreview"
+                                class="mt-1 w-full"
+                                controls
+                                preload="metadata"
+                                x-cloak
+                            ></audio>
 
                             <progress
                                 class="progress progress-primary mt-1 h-1 w-full"
