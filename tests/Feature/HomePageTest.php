@@ -7,6 +7,9 @@ uses(RefreshDatabase::class);
 test('the home page renders the landing sections', function () {
     $this->get(route('home'))
         ->assertOk()
+        ->assertSee('ionvop Tech Solutions — Custom software for local businesses')
+        ->assertSee('>ionvop Tech Solutions</span>', false)
+        ->assertSee('ionvop Tech Solutions. All rights reserved.')
         ->assertSee('Software built around how your business')
         ->assertSee('PHP 2,000')
         ->assertSee('PHP 1,000')
@@ -21,6 +24,7 @@ test('the home page renders the landing sections', function () {
 test('the chat page renders the conversation shell', function () {
     $this->get(route('chat'))
         ->assertOk()
+        ->assertSee('Chat — ionvop Tech Solutions')
         ->assertSee('Project conversation')
         ->assertSee('Project details')
         ->assertSee('Not started yet')
