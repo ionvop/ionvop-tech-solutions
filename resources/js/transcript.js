@@ -67,6 +67,31 @@ export function appendMessages(messages, incoming) {
 }
 
 /**
+ * Adopt the persisted greeting into its existing local transcript entry.
+ *
+ * @returns {Array<object>} Incoming messages without the already-rendered greeting.
+ */
+export function reconcileVirtualGreeting(messages, incoming, greetingBody) {
+    if (!Array.isArray(incoming)) {
+        return [];
+    }
+
+    const virtualGreeting = messages.find((message) => message.virtualGreeting === true);
+    const persistedGreeting = incoming.find((message) =>
+        message?.role === 'assistant' && message.body === greetingBody,
+    );
+
+    if (virtualGreeting === undefined || persistedGreeting === undefined) {
+        return incoming;
+    }
+
+    mergeFields(virtualGreeting, persistedGreeting);
+    virtualGreeting.virtualGreeting = false;
+
+    return incoming.filter((message) => message !== persistedGreeting);
+}
+
+/**
  * Copy changed fields onto an existing object.
  *
  * Keeping the same object reference stops Alpine from re-rendering bindings
