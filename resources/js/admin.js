@@ -120,12 +120,14 @@ export default function admin(initial) {
         /**
          * Open the hidden file picker.
          */
-        pickFile() {
+        pickFile(kind = 'any') {
             if (this.sending || this.recording || this.selected === null) {
                 return;
             }
 
-            this.$refs.fileInput?.click();
+            const input = kind === 'image' ? this.$refs.photoInput : this.$refs.fileInput;
+
+            input?.click();
         },
 
         /**
