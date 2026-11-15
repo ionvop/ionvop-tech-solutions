@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Chat — ionvop')
+@section('title', 'Chat — ionvop Tech Solutions')
 @section('description', 'Discuss your business problem, share requirements, and follow your project status.')
 
 @section('fullscreen', 'true')
