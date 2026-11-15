@@ -1,6 +1,6 @@
-# ionvop Tech Services
+# ionvop Tech Solutions
 
-ionvop Tech Services builds custom software and websites for local businesses. This Laravel application includes a public services and portfolio site, a project inquiry chat, and a private admin dashboard for managing conversations and project details.
+ionvop Tech Solutions builds custom software and websites for local businesses. This Laravel application includes a public services and portfolio site, a project inquiry chat, and a private admin dashboard for managing conversations and project details.
 
 ## Features
 
