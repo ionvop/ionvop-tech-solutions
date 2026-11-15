@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'ionvop — Custom software for local businesses')
+@section('title', 'ionvop Tech Solutions — Custom software for local businesses')
 
 @section('content')
     <div class="hero relative isolate min-h-[80vh] overflow-hidden">
