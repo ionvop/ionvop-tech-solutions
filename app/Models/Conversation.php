@@ -66,7 +66,7 @@ class Conversation extends Model
     /**
      * The first message the assistant sends in a new conversation.
      */
-    public const GREETING = "Hi! I'm the assistant that takes first inquiries while ionvop is away. What should I call you, and what does your business do?";
+    public const GREETING = 'Hi! Would you like me to handle your initial inquiries while ionvop is unavailable, or would you rather wait for ionvop to respond?';
 
     /**
      * The message shown when the assistant pauses itself without a reply.
