@@ -6,7 +6,7 @@
                     <span class="grid size-9 -skew-x-6 place-items-center rounded-field bg-primary text-primary-content">
                         <span class="skew-x-6 text-lg font-bold leading-none">i</span>
                     </span>
-                    <span class="text-lg font-bold tracking-tight">ionvop</span>
+                    <span class="text-lg font-bold tracking-tight">ionvop Tech Solutions</span>
                 </div>
                 <p class="mt-4 text-sm text-base-content/60">
                     Custom software and websites for businesses in Tagum City, Nabunturan, and beyond.
@@ -30,7 +30,7 @@
         </div>
 
         <div class="mt-12 flex flex-col gap-2 border-t border-base-300 pt-6 text-sm text-base-content/50 sm:flex-row sm:items-center sm:justify-between">
-            <p>&copy; {{ date('Y') }} ionvop. All rights reserved.</p>
+            <p>&copy; {{ date('Y') }} ionvop Tech Solutions. All rights reserved.</p>
             <a href="{{ route('admin') }}" class="link link-hover">Admin</a>
         </div>
     </div>
