@@ -20,6 +20,22 @@ use Throwable;
 class ChatUploads
 {
     /**
+     * Canonical content types for audio uploads, keyed by extension.
+     *
+     * Content sniffing reports `video/webm` and `video/mp4` for audio-only
+     * containers, which would make the browser render a video element for a
+     * voice note. The extension is the only reliable signal here, and the file
+     * is always served with a sandbox policy, so it is trusted for this.
+     */
+    private const AUDIO_MIME_TYPES = [
+        'webm' => 'audio/webm',
+        'm4a' => 'audio/mp4',
+        'ogg' => 'audio/ogg',
+        'mp3' => 'audio/mpeg',
+        'wav' => 'audio/wav',
+    ];
+
+    /**
      * Get the configured upload disk.
      */
     public function disk(): string
@@ -68,6 +84,21 @@ class ChatUploads
     }
 
     /**
+     * Resolve the content type to record for an upload.
+     *
+     * Audio uploads are normalised from their extension so a recording is
+     * always served as audio. Every other kind keeps the sniffed type.
+     */
+    public function mimeTypeFor(string $kind, string $extension, string $guessed): string
+    {
+        if ($kind !== Attachment::KIND_AUDIO) {
+            return $guessed;
+        }
+
+        return self::AUDIO_MIME_TYPES[Str::lower($extension)] ?? $guessed;
+    }
+
+    /**
      * Get every allowed extension, for the file picker's `accept` attribute.
      *
      * @return list<string>
@@ -106,7 +137,11 @@ class ChatUploads
             'disk' => $disk,
             'path' => $path,
             'original_name' => Str::limit($file->getClientOriginalName(), 255, ''),
-            'mime_type' => Str::limit((string) $file->getMimeType(), 128, ''),
+            'mime_type' => Str::limit(
+                $this->mimeTypeFor($kind, $extension, (string) $file->getMimeType()),
+                128,
+                '',
+            ),
             'size' => $file->getSize(),
             'kind' => $kind,
         ]);
